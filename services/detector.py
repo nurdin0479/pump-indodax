@@ -2,7 +2,7 @@ import requests
 from datetime import datetime
 import pytz
 from services import database_pg
-from config_app import TELEGRAM
+import streamlit as st
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -45,9 +45,9 @@ def is_valid_pump(ticker, price_threshold, volume_threshold, window=2):
         return False, None
 
 def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM['token']}/sendMessage"
+    url = f"https://api.telegram.org/bot{st.secrets['TELEGRAM_TOKEN']}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM["chat_id"],
+        "chat_id": st.secrets["TELEGRAM_CHAT_ID"],
         "text": message
     }
     requests.post(url, data=payload)
