@@ -1,10 +1,6 @@
 import psycopg2
+from psycopg2 import sql
 import streamlit as st
-from datetime import datetime
-import pytz
-
-# Timezone WIB
-wib = pytz.timezone('Asia/Jakarta')
 
 def get_conn():
     return psycopg2.connect(
@@ -17,82 +13,103 @@ def get_conn():
     )
 
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+    """Create table kalau belum ada"""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
 
-    # Table harga ticker
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS ticker_history (
-            id SERIAL PRIMARY KEY,
-            ticker VARCHAR(20),
-            last FLOAT,
-            vol_idr FLOAT,
-            timestamp TIMESTAMP
-        )
-    """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ticker_history (
+                id SERIAL PRIMARY KEY,
+                ticker TEXT,
+                last REAL,
+                vol_idr REAL,
+                timestamp TEXT
+            )
+        """)
 
-    # Table pump history
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS pump_history (
-            id SERIAL PRIMARY KEY,
-            ticker VARCHAR(20),
-            harga_sebelum FLOAT,
-            harga_sekarang FLOAT,
-            kenaikan_harga FLOAT,
-            kenaikan_volume FLOAT,
-            timestamp TIMESTAMP
-        )
-    """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pump_history (
+                id SERIAL PRIMARY KEY,
+                ticker TEXT,
+                harga_sebelum REAL,
+                harga_sekarang REAL,
+                kenaikan_harga REAL,
+                kenaikan_volume REAL,
+                timestamp TEXT
+            )
+        """)
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    except psycopg2.Error as e:
+        st.error(f"❌ Error inisialisasi database: {e}")
 
 def save_ticker_history(ticker, last, vol_idr):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO ticker_history (ticker, last, vol_idr, timestamp)
-        VALUES (%s, %s, %s, %s)
-    """, (ticker, last, vol_idr, datetime.now(wib)))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ticker_history (ticker, last, vol_idr, timestamp)
+            VALUES (%s, %s, %s, NOW())
+        """, (ticker, last, vol_idr))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except psycopg2.Error as e:
+        st.error(f"❌ Error save ticker history: {e}")
 
 def get_recent_price_volume(ticker, limit=4):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT last, vol_idr FROM ticker_history
-        WHERE ticker = %s ORDER BY id DESC LIMIT %s
-    """, (ticker, limit))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT last, vol_idr FROM ticker_history
+            WHERE ticker = %s
+            ORDER BY id DESC
+            LIMIT %s
+        """, (ticker, limit))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_recent_price_volume: {e}")
+        return []
 
 def save_pump_log(data):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO pump_history (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (
-        data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
-        data['kenaikan_harga'], data['kenaikan_volume'], data['timestamp']
-    ))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO pump_history (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
+            data['kenaikan_harga'], data['kenaikan_volume'], data['timestamp']
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except psycopg2.Error as e:
+        st.error(f"❌ Error save_pump_log: {e}")
 
 def get_pump_history(limit=50):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp
-        FROM pump_history ORDER BY id DESC LIMIT %s
-    """, (limit,))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    return rows
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp
+            FROM pump_history
+            ORDER BY id DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_pump_history: {e}")
+        return []
