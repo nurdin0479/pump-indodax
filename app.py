@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from services import database_pg, detector
+from streamlit_autorefresh import st_autorefresh
 
 # Init DB
 database_pg.init_db()
@@ -32,7 +33,7 @@ else:
 
 # Tombol manual refresh
 if st.button("🔄 Manual Refresh Sekarang"):
-    st.experimental_rerun()
+   st_autorefresh(interval=100)  # 0.1 detik trigger refresh
 
 st.write("📊 Monitoring harga realtime dari Indodax")
 
