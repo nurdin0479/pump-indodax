@@ -7,11 +7,13 @@ import streamlit as st
 # Set timezone WIB
 wib = pytz.timezone('Asia/Jakarta')
 
+@st.cache_data(ttl=5)
 def fetch_indodax_data():
+    """Ambil data ticker Indodax, di-cache selama 5 detik."""
     url = "https://indodax.com/api/tickers"
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # kalau status != 200 langsung error
+        response.raise_for_status()  # error kalau status code != 200
 
         data = response.json()
 
@@ -28,7 +30,7 @@ def fetch_indodax_data():
                     "vol_idr": float(info["vol_idr"])
                 })
             except (KeyError, ValueError):
-                continue  # skip kalau datanya ga valid
+                continue  # skip kalau data error
 
         return result
 
