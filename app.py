@@ -27,7 +27,7 @@ elif preset == "Safe":
     price_threshold = 2.0
     volume_threshold = 80.0
 else:
-    interval = st.sidebar.selectbox("Interval (detik)", [2, 3, 5, 10], index=0)
+    interval = st.sidebar.selectbox("Interval (detik)", [3, 5, 10], index=0)
     price_threshold = st.sidebar.slider("Threshold Harga (%)", 0.5, 5.0, 1.5, 0.1)
     volume_threshold = st.sidebar.slider("Threshold Volume Spike (%)", 10.0, 500.0, 50.0, 5.0)
 
