@@ -15,7 +15,7 @@ st.title("🚨 Indodax Pump Detector Profesional")
 preset = st.sidebar.radio("🎛️ Preset Sensitivity", ["Custom", "Aggressive", "Moderate", "Safe"], index=0)
 
 if preset == "Aggressive":
-    interval = 2
+    interval = 3
     price_threshold = 1.0
     volume_threshold = 30.0
 elif preset == "Moderate":
