@@ -4,7 +4,7 @@ from datetime import datetime
 from services import database_pg, detector
 from streamlit_autorefresh import st_autorefresh
 
-# Init DB
+# Init DB sekali saja di awal
 database_pg.init_db()
 
 # Setting page
@@ -31,13 +31,12 @@ else:
     price_threshold = st.sidebar.slider("Threshold Harga (%)", 0.5, 5.0, 1.5, 0.1)
     volume_threshold = st.sidebar.slider("Threshold Volume Spike (%)", 10.0, 500.0, 50.0, 5.0)
 
-# Tombol manual refresh
-if st.button("🔄 Manual Refresh Sekarang"):
-   st_autorefresh(interval=100)  # 0.1 detik trigger refresh
+# Auto refresh realtime
+count = st_autorefresh(interval=interval * 1000, key="data_refresh")
 
 st.write("📊 Monitoring harga realtime dari Indodax")
 
-# Ambil data ticker via Indodax API
+# Fetch data Indodax
 data = detector.fetch_indodax_data()
 detected_pumps = []
 
@@ -46,10 +45,8 @@ for d in data:
     last = d['last']
     vol_idr = d['vol_idr']
 
-    # Simpan ke PostgreSQL Aiven
     database_pg.save_ticker_history(ticker, last, vol_idr)
 
-    # Cek valid pump
     is_pump, result = detector.is_valid_pump(ticker, price_threshold, volume_threshold)
     if is_pump:
         database_pg.save_pump_log(result)
@@ -67,8 +64,3 @@ if detected_pumps:
 
 # Waktu update terakhir
 st.write(f"🕒 Update terakhir: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} WIB")
-
-# Auto Refresh pakai streamlit_autorefresh (lebih aman)
-from streamlit_autorefresh import st_autorefresh
-
-count = st_autorefresh(interval=interval * 1000, key="refresh")
