@@ -1,75 +1,107 @@
-import sqlite3
-from datetime import datetime, timedelta
+import psycopg2
+from datetime import datetime
 import pytz
-import os
 
+# Timezone WIB
 wib = pytz.timezone('Asia/Jakarta')
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_FILE = os.path.join(BASE_DIR, "database", "crypto.db")
+
+# Konfigurasi koneksi PostgreSQL Aiven
+DB_PARAMS = {
+    'dbname': 'defaultdb',
+    'user': 'avnadmin',
+    'password': 'supersecretpassword',
+    'host': 'pg-12345.aivencloud.com',
+    'port': 22345,
+    'sslmode': 'require'
+}
 
 def get_conn():
-    return sqlite3.connect(DB_FILE, check_same_thread=False)
+    return psycopg2.connect(**DB_PARAMS)
 
 def init_db():
     conn = get_conn()
-    c = conn.cursor()
-    c.execute("""
+    cur = conn.cursor()
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS ticker_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticker TEXT, last REAL, vol_idr REAL, timestamp TEXT
+            id SERIAL PRIMARY KEY,
+            ticker VARCHAR(20),
+            last FLOAT,
+            vol_idr FLOAT,
+            timestamp TIMESTAMP
         )
     """)
-    c.execute("""
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS pump_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ticker TEXT, harga_sebelum REAL, harga_sekarang REAL,
-            kenaikan_harga REAL, kenaikan_volume REAL, timestamp TEXT
+            id SERIAL PRIMARY KEY,
+            ticker VARCHAR(20),
+            harga_sebelum FLOAT,
+            harga_sekarang FLOAT,
+            kenaikan_harga FLOAT,
+            kenaikan_volume FLOAT,
+            timestamp TIMESTAMP
         )
     """)
+
     conn.commit()
+    cur.close()
     conn.close()
 
 def save_ticker_history(ticker, last, vol_idr):
     conn = get_conn()
-    c = conn.cursor()
-    c.execute("""
+    cur = conn.cursor()
+
+    cur.execute("""
         INSERT INTO ticker_history (ticker, last, vol_idr, timestamp)
-        VALUES (?, ?, ?, ?)
-    """, (ticker, last, vol_idr, datetime.now(wib).strftime('%Y-%m-%d %H:%M:%S')))
+        VALUES (%s, %s, %s, %s)
+    """, (ticker, last, vol_idr, datetime.now(wib)))
+
     conn.commit()
+    cur.close()
     conn.close()
 
 def get_recent_price_volume(ticker, limit=4):
     conn = get_conn()
-    c = conn.cursor()
-    c.execute("""
-        SELECT last, vol_idr FROM ticker_history 
-        WHERE ticker = ? ORDER BY id DESC LIMIT ?
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT last, vol_idr FROM ticker_history
+        WHERE ticker = %s ORDER BY id DESC LIMIT %s
     """, (ticker, limit))
-    rows = c.fetchall()
+
+    rows = cur.fetchall()
+    cur.close()
     conn.close()
     return rows
 
 def save_pump_log(data):
     conn = get_conn()
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO pump_history (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO pump_history 
+        (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """, (
         data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
         data['kenaikan_harga'], data['kenaikan_volume'], data['timestamp']
     ))
+
     conn.commit()
+    cur.close()
     conn.close()
 
 def get_pump_history(limit=50):
     conn = get_conn()
-    c = conn.cursor()
-    c.execute("""
+    cur = conn.cursor()
+
+    cur.execute("""
         SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp
-        FROM pump_history ORDER BY id DESC LIMIT ?
+        FROM pump_history ORDER BY id DESC LIMIT %s
     """, (limit,))
-    rows = c.fetchall()
+
+    rows = cur.fetchall()
+    cur.close()
     conn.close()
     return rows
