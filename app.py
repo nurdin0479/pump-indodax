@@ -32,10 +32,11 @@ else:
 
 # Tombol manual refresh
 if st.button("🔄 Manual Refresh Sekarang"):
-    st.rerun()
+    st.experimental_rerun()
 
 st.write("📊 Monitoring harga realtime dari Indodax")
 
+# Ambil data ticker via Indodax API
 data = detector.fetch_indodax_data()
 detected_pumps = []
 
@@ -44,15 +45,17 @@ for d in data:
     last = d['last']
     vol_idr = d['vol_idr']
 
+    # Simpan ke PostgreSQL Aiven
     database_pg.save_ticker_history(ticker, last, vol_idr)
 
+    # Cek valid pump
     is_pump, result = detector.is_valid_pump(ticker, price_threshold, volume_threshold)
     if is_pump:
         database_pg.save_pump_log(result)
         detector.send_telegram_message(
             f"🚨 PUMP DETECTED {result['ticker']}\n"
-            f"Harga: {result['harga_sebelum']} ➡️ {result['harga_sekarang']} (+{result['kenaikan_harga']}%)\n"
-            f"Volume: +{result['kenaikan_volume']}%\n"
+            f"Harga: {result['harga_sebelum']} ➡️ {result['harga_sekarang']} (+{result['kenaikan_harga']:.2f}%)\n"
+            f"Volume: +{result['kenaikan_volume']:.2f}%\n"
             f"Jam: {result['timestamp']}"
         )
         detected_pumps.append(result)
@@ -61,8 +64,10 @@ if detected_pumps:
     st.subheader("📈 Pump Terdeteksi")
     st.dataframe(pd.DataFrame(detected_pumps))
 
+# Waktu update terakhir
 st.write(f"🕒 Update terakhir: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} WIB")
 
-# Auto refreshjjjj
-st.cache_resource.clear()
-st.rerun()
+# Auto Refresh pakai streamlit_autorefresh (lebih aman)
+from streamlit_autorefresh import st_autorefresh
+
+count = st_autorefresh(interval=interval * 1000, key="refresh")
