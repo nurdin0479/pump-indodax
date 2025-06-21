@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from services import database, detector
+from services import database_pg, detector
 
 # Init DB
-database.init_db()
+database_pg.init_db()
 
 # Setting page
 st.set_page_config(page_title="Pump Detector Pro Indodax", layout="wide")
@@ -44,11 +44,11 @@ for d in data:
     last = d['last']
     vol_idr = d['vol_idr']
 
-    database.save_ticker_history(ticker, last, vol_idr)
+    database_pg.save_ticker_history(ticker, last, vol_idr)
 
     is_pump, result = detector.is_valid_pump(ticker, price_threshold, volume_threshold)
     if is_pump:
-        database.save_pump_log(result)
+        database_pg.save_pump_log(result)
         detector.send_telegram_message(
             f"🚨 PUMP DETECTED {result['ticker']}\n"
             f"Harga: {result['harga_sebelum']} ➡️ {result['harga_sekarang']} (+{result['kenaikan_harga']}%)\n"

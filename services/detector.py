@@ -1,7 +1,7 @@
 import requests
 from datetime import datetime
 import pytz
-from services import database
+from services import database_pg
 from config_app import TELEGRAM
 
 wib = pytz.timezone('Asia/Jakarta')
@@ -22,7 +22,7 @@ def fetch_indodax_data():
     return result
 
 def is_valid_pump(ticker, price_threshold, volume_threshold, window=2):
-    rows = database.get_recent_price_volume(ticker, limit=window+1)
+    rows = database_pg.get_recent_price_volume(ticker, limit=window+1)
     if len(rows) < window+1:
         return False, None
 
