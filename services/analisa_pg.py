@@ -1,10 +1,24 @@
-import numpy as np
-from services.database_pg import get_conn
-import pandas as pd
+# services/analisa_pg.py
 
+import psycopg2
+import streamlit as st
+import pandas as pd
+import numpy as np
+import ta  # library technical analysis
+import mplfinance as mpf
+import matplotlib.pyplot as plt
+
+def get_conn():
+    return psycopg2.connect(
+        dbname=st.secrets["DB_NAME"],
+        user=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        host=st.secrets["DB_HOST"],
+        port=st.secrets["DB_PORT"],
+        sslmode=st.secrets["DB_SSLMODE"]
+    )
 
 def get_all_tickers():
-    """Ambil semua ticker unik dari database"""
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -16,13 +30,11 @@ def get_all_tickers():
         cur.close()
         conn.close()
         return [r[0] for r in rows]
-    except Exception as e:
-        print(f"❌ Error get_all_tickers: {e}")
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_all_tickers: {e}")
         return []
 
-
-def get_last_n_closes(ticker, n=30):
-    """Ambil n harga close terakhir untuk coin tertentu"""
+def get_last_30_daily_closes(ticker):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -34,80 +46,67 @@ def get_last_n_closes(ticker, n=30):
                 ORDER BY DATE(timestamp) DESC, timestamp DESC
             ) AS daily_prices
             ORDER BY tgl DESC
-            LIMIT %s
-        """, (ticker, n))
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return [r[0] for r in rows][::-1]  # urutan lama ke baru
-    except Exception as e:
-        print(f"❌ Error get_last_n_closes: {e}")
-        return []
-
-
-def calculate_moving_average(data, window=5):
-    """Hitung Moving Average"""
-    if len(data) < window:
-        return []
-    return pd.Series(data).rolling(window=window).mean().tolist()
-
-
-def calculate_rsi(prices, period=14):
-    """Hitung RSI (Relative Strength Index)"""
-    if len(prices) < period:
-        return None
-
-    deltas = np.diff(prices)
-    seed = deltas[:period]
-    up = seed[seed >= 0].sum() / period
-    down = -seed[seed < 0].sum() / period
-    rs = up / down if down != 0 else 0
-    rsi = 100 - (100 / (1 + rs))
-    return round(rsi, 2)
-
-
-def calculate_bollinger_bands(prices, window=20):
-    """Hitung Bollinger Bands"""
-    if len(prices) < window:
-        return [], [], []
-
-    series = pd.Series(prices)
-    sma = series.rolling(window=window).mean()
-    std = series.rolling(window=window).std()
-
-    upper_band = sma + (2 * std)
-    lower_band = sma - (2 * std)
-
-    return upper_band.tolist(), sma.tolist(), lower_band.tolist()
-
-
-def get_support_resistance_levels(prices):
-    """Deteksi level support & resistance dari frekuensi harga terbanyak"""
-    if not prices:
-        return None, None
-
-    prices_rounded = [round(p, -int(np.log10(p)) + 1) if p != 0 else 0 for p in prices]
-    price_counts = pd.Series(prices_rounded).value_counts()
-
-    support = price_counts.idxmax()  # harga yang paling sering muncul
-    resistance_candidates = price_counts[price_counts.index > support]
-
-    resistance = resistance_candidates.idxmax() if not resistance_candidates.empty else max(prices)
-    return support, resistance
-def get_last_n_closes(ticker, n=30):
-    try:
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT last FROM ticker_history
-            WHERE ticker = %s
-            ORDER BY id DESC
-            LIMIT %s
-        """, (ticker, n))
+            LIMIT 30
+        """, (ticker,))
         rows = cur.fetchall()
         cur.close()
         conn.close()
         return [r[0] for r in rows]
     except psycopg2.Error as e:
-        st.error(f"❌ Error get_last_n_closes: {e}")
+        st.error(f"❌ Error get_last_30_daily_closes: {e}")
         return []
+
+def get_full_price_data(ticker):
+    """Ambil data lengkap harga & timestamp"""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT timestamp, last FROM ticker_history
+            WHERE ticker = %s
+            ORDER BY timestamp ASC
+        """, (ticker,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        df = pd.DataFrame(rows, columns=['timestamp', 'close'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        return df
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_full_price_data: {e}")
+        return pd.DataFrame()
+
+def calculate_indicators(df):
+    df['MA5'] = df['close'].rolling(window=5).mean()
+    df['MA20'] = df['close'].rolling(window=20).mean()
+    df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+    df['UpperBand'], df['MiddleBand'], df['LowerBand'] = ta.volatility.BollingerBands(df['close']).bollinger_hband(), ta.volatility.BollingerBands(df['close']).bollinger_mavg(), ta.volatility.BollingerBands(df['close']).bollinger_lband()
+    return df
+
+def plot_candlestick_chart(df, ticker):
+    mc = mpf.make_marketcolors(up='g', down='r', inherit=True)
+    s  = mpf.make_mpf_style(marketcolors=mc)
+
+    df_ohlc = df.resample('1H').agg({
+        'close': 'last'
+    }).dropna()
+
+    df_ohlc['open'] = df_ohlc['close'].shift(1)
+    df_ohlc['high'] = df_ohlc[['open', 'close']].max(axis=1)
+    df_ohlc['low'] = df_ohlc[['open', 'close']].min(axis=1)
+
+    df_ohlc = df_ohlc.dropna()
+
+    fig, ax = mpf.plot(df_ohlc, type='candle', style=s, title=f'{ticker} Candlestick Chart', returnfig=True)
+    st.pyplot(fig)
+
+def plot_price_chart(df, ticker):
+    fig, ax = plt.subplots(figsize=(10,5))
+    df['close'].plot(ax=ax, label='Close Price')
+    df['MA5'].plot(ax=ax, label='MA5')
+    df['MA20'].plot(ax=ax, label='MA20')
+    ax.set_title(f"{ticker} Price with Moving Averages")
+    ax.legend()
+    st.pyplot(fig)
