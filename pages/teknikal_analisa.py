@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
-from collections import Counter
+import numpy as np
 from services import database_pg
 
-st.set_page_config(page_title="Analisa Teknikal Indodax", layout="wide")
-st.title("📊 Analisa Teknikal Candle 30 Hari")
+st.set_page_config(page_title="Analisa Teknikal + Indikator", layout="wide")
+st.title("📊 Analisa Teknikal 30 Candle + Indikator Populer")
 
 # Ambil daftar coin dari database
 all_coins = database_pg.get_all_tickers()
@@ -26,41 +26,53 @@ if st.button("🚀 Mulai Analisa"):
         st.error("❌ Data kurang dari 10 candle daily.")
         st.stop()
 
-    st.success(f"✅ Ditemukan {len(closes)} data candle 1D terakhir.")
+    closes = closes[::-1]  # urutkan dari lama ke terbaru
+    st.success(f"✅ Ditemukan {len(closes)} data candle 1D.")
 
-    # Hitung frekuensi kemunculan harga (dibulatkan ke 3 digit terdekat)
-    rounded_prices = [round(p, -3) for p in closes]
-    price_count = Counter(rounded_prices)
+    df = pd.DataFrame(closes, columns=["Close"])
 
-    # Tentukan harga support terkuat
-    support_price, support_freq = price_count.most_common(1)[0]
+    # Moving Average (MA)
+    df["MA5"] = df["Close"].rolling(window=5).mean()
+    df["MA10"] = df["Close"].rolling(window=10).mean()
+    df["MA20"] = df["Close"].rolling(window=20).mean()
 
-    # Cari resistance atau TP berdasarkan harga-harga tertinggi
-    sorted_prices = sorted(list(set(rounded_prices)))
-    support_index = sorted_prices.index(support_price)
+    # RSI (Relative Strength Index)
+    delta = df["Close"].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    df["RSI"] = 100 - (100 / (1 + rs))
 
-    tp1 = sorted_prices[support_index + 1] if support_index + 1 < len(sorted_prices) else None
-    tp2 = sorted_prices[support_index + 2] if support_index + 2 < len(sorted_prices) else None
-    tp3 = sorted_prices[support_index + 3] if support_index + 3 < len(sorted_prices) else None
+    # MACD (12-26 EMA)
+    df["EMA12"] = df["Close"].ewm(span=12, adjust=False).mean()
+    df["EMA26"] = df["Close"].ewm(span=26, adjust=False).mean()
+    df["MACD"] = df["EMA12"] - df["EMA26"]
+    df["Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
 
-    # Tampilkan hasil
-    st.subheader("📈 Hasil Analisa Teknikal")
-    st.write(f"**Support Terkuat:** Rp {support_price} (muncul {support_freq}x)")
-    if tp1: st.write(f"**Take Profit 1:** Rp {tp1}")
-    if tp2: st.write(f"**Take Profit 2:** Rp {tp2}")
-    if tp3: st.write(f"**Take Profit 3:** Rp {tp3}")
+    # Bollinger Bands (20 MA + 2 SD)
+    df["MA20"] = df["Close"].rolling(window=20).mean()
+    df["STD20"] = df["Close"].rolling(window=20).std()
+    df["UpperBB"] = df["MA20"] + (2 * df["STD20"])
+    df["LowerBB"] = df["MA20"] - (2 * df["STD20"])
 
-    # Tampilkan tabel harga
-    df = pd.DataFrame(closes, columns=["Harga Close"])
-    st.dataframe(df)
+    # Tampilkan tabel hasil
+    st.subheader("📊 Data + Indikator Teknikal")
+    st.dataframe(df, use_container_width=True)
 
-    # Embed chart TradingView
-    st.subheader("📊 Chart TradingView (Live)")
+    # Chart harga + MA
+    st.subheader("📈 Harga & Moving Average")
+    st.line_chart(df[["Close", "MA5", "MA10", "MA20"]])
 
-    tv_widget = f"""
-    <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_{selected_coin}&symbol=INDODAX%3A{selected_coin.upper()}&interval=D&theme=dark&style=1&timezone=Asia%2FJakarta&hide_top_toolbar=true&save_image=false&studies=[]" 
-        width="100%" height="480" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
-    """
+    # Chart RSI
+    st.subheader("📈 RSI (Relative Strength Index)")
+    st.line_chart(df["RSI"])
 
-    st.components.v1.html(tv_widget, height=480, scrolling=False)
+    # Chart MACD
+    st.subheader("📈 MACD & Signal")
+    st.line_chart(df[["MACD", "Signal"]])
 
+    # Chart Bollinger Bands
+    st.subheader("📈 Bollinger Bands")
+    st.line_chart(df[["Close", "UpperBB", "LowerBB"]])
