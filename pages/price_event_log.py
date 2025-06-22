@@ -6,8 +6,17 @@ st.set_page_config(page_title="Real-time Harga Coin", layout="wide")
 st.title("📊 Log Harga Real-time per Coin (Debug View)")
 
 # Pilih coin yang ingin dicek
-all_coins = ["btc_idr", "eth_idr", "bnb_idr", "doge_idr"]  # tambah coin sesuai kebutuhan
-selected_coin = st.selectbox("Pilih Coin", all_coins)
+# Ambil daftar coin dari database
+all_coins = database_pg.get_all_tickers()
+
+if not all_coins:
+    st.warning("⚠️ Belum ada histori harga coin di database.")
+    st.stop()
+
+# Pilih coin dari dropdown
+selected_coin = st.selectbox("🪙 Pilih Coin", all_coins)
+
+
 
 # Pilih jumlah histori yang ingin ditampilkan
 limit = st.slider("Jumlah data terakhir", 5, 100, 10, 1)
