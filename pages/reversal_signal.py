@@ -6,8 +6,17 @@ st.set_page_config(page_title="Reversal Signal Indodax", layout="wide")
 st.title("📈 Downtrend & Potensi Reversal Detector")
 
 # Pilih coin
-all_coins = ["btc_idr", "eth_idr", "bnb_idr", "doge_idr"]  # sesuaikan list coin
+# Ambil daftar coin dari database
+all_coins = database_pg.get_all_tickers()
+
+if not all_coins:
+    st.warning("⚠️ Data coin belum tersedia di database.")
+    st.stop()
+
 selected_coin = st.selectbox("🪙 Pilih Coin", all_coins)
+
+
+
 
 # Pilih jumlah histori candle yang dicek
 limit = st.slider("Jumlah data candle terakhir", 5, 50, 10, 1)
