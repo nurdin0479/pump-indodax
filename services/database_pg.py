@@ -203,3 +203,26 @@ def get_price_history_since(ticker, since_date):
     except psycopg2.Error as e:
         st.error(f"❌ Error get_price_history_since: {e}")
         return []
+
+def get_last_30_daily_closes(ticker):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT last FROM ticker_history
+            WHERE ticker = %s AND timestamp::date IN (
+                SELECT DISTINCT timestamp::date 
+                FROM ticker_history
+                WHERE ticker = %s
+                ORDER BY timestamp::date DESC
+                LIMIT 30
+            )
+            ORDER BY timestamp DESC
+        """, (ticker, ticker))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [r[0] for r in rows]
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_last_30_daily_closes: {e}")
+        return []
