@@ -9,7 +9,7 @@ database_pg.init_db()
 
 # Setting halaman
 st.set_page_config(page_title="Pump Detector Pro Indodax", layout="wide")
-st.title("🚨 Indodax Pump Detector Profesional")
+st.title("🚨 Tools Trading Profesional NBF SOFT")
 
 # Preset Sensitivity
 preset = st.sidebar.radio("🎛️ Preset Sensitivity", ["Custom", "Aggressive", "Moderate", "Safe"], index=0)
