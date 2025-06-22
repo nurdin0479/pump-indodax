@@ -2,6 +2,13 @@ import streamlit as st
 from services.database_pg import get_all_tickers
 from services import analisa_pg
 
+tickers = analisa_pg.get_all_tickers()
+closes = analisa_pg.get_last_n_closes('btc_idr', 30)
+ma5 = analisa_pg.calculate_moving_average(closes, 5)
+rsi = analisa_pg.calculate_rsi(closes)
+upper, sma, lower = analisa_pg.calculate_bollinger_bands(closes)
+support, resistance = analisa_pg.get_support_resistance_levels(closes)
+
 st.title("📊 Analisa Teknikal")
 # Pilih koin dari database
 coin = st.selectbox("Pilih Coin", get_all_tickers())
