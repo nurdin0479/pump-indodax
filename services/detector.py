@@ -41,28 +41,44 @@ def fetch_indodax_data():
         st.error("❌ Error parsing JSON dari API.")
         return []
 
-def is_valid_pump(ticker, price_threshold, volume_threshold, window=2):
+def is_valid_pump(ticker, price_threshold, volume_threshold, window=3):
+    # Ambil data 4 harga & volume terakhir
     rows = database_pg.get_recent_price_volume(ticker, limit=window+1)
     if len(rows) < window+1:
         return False, None
 
-    current_price, current_vol = rows[0]
-    prev_price, prev_vol = rows[1]
+    prices = [row[0] for row in rows]
+    volumes = [row[1] for row in rows]
 
-    price_change = ((current_price - prev_price) / prev_price) * 100 if prev_price else 0
-    volume_change = ((current_vol - prev_vol) / prev_vol) * 100 if prev_vol else 0
+    # Validasi harga naik 3x berturut-turut
+    if not (prices[0] > prices[1] > prices[2] > prices[3]):
+        return False, None
 
+    # Hitung kenaikan harga & volume
+    price_change = ((prices[0] - prices[3]) / prices[3]) * 100 if prices[3] else 0
+    volume_change = ((volumes[0] - volumes[3]) / volumes[3]) * 100 if volumes[3] else 0
+
+    # Validasi threshold pump
     if price_change >= price_threshold and volume_change >= volume_threshold:
-        return True, {
+        timestamp = datetime.now(wib).strftime('%Y-%m-%d %H:%M:%S')
+
+        data = {
             "ticker": ticker,
-            "harga_sebelum": round(prev_price, 2),
-            "harga_sekarang": round(current_price, 2),
+            "harga_sebelum": round(prices[3], 2),
+            "harga_sekarang": round(prices[0], 2),
             "kenaikan_harga": round(price_change, 2),
             "kenaikan_volume": round(volume_change, 2),
-            "timestamp": datetime.now(wib).strftime('%Y-%m-%d %H:%M:%S')
+            "timestamp": timestamp
         }
-    else:
-        return False, None
+
+        # Simpan log pump ke database
+        database_pg.save_pump_log(data)
+
+        return True, data  # <-- HANYA kalau pump terdeteksi
+
+    return False, None  # <-- Kalau tidak valid
+
+
 
 def send_telegram_message(message):
     try:
