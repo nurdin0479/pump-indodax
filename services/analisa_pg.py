@@ -53,6 +53,21 @@ def calculate_rsi(closes, period=14):
     rs = avg_gain / avg_loss if avg_loss != 0 else 0
     rsi = 100 - (100 / (1 + rs))
     return round(rsi, 2)
+def get_all_tickers():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ticker FROM ticker_history
+            ORDER BY ticker
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [r[0] for r in rows]
+    except Exception as e:
+        print(f"Error get_all_tickers: {e}")
+        return []
 
 def calculate_bollinger_bands(closes, window=20):
     """Hitung Bollinger Bands"""
