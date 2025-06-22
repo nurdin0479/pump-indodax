@@ -1,64 +1,105 @@
 import streamlit as st
-from services import analisa_pg
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import mplfinance as mpf
+from datetime import datetime
+from services import analisa_pg
+import ta  # technical analysis library
 
-# === Set Halaman ===
-st.set_page_config(page_title="Analisa Candle Pro", layout="wide")
-st.title("📊 Analisa Candle Pro (Matplotlib + TradingView)")
+st.set_page_config(page_title="📊 Analisa Candle Pro", layout="wide")
 
-# === Pilihan Coin ===
-tickers = analisa_pg.get_all_tickers()
-if not tickers:
-    st.warning("❌ Data coin belum tersedia.")
+st.title("📊 Analisa Candlestick & Indikator Pro")
+
+# Ambil list coin
+coins = analisa_pg.get_all_tickers()
+if not coins:
+    st.error("Belum ada data ticker. Silakan jalankan fetch harga dulu.")
     st.stop()
 
-selected_ticker = st.selectbox("Pilih Coin", tickers)
+# Pilih coin
+selected_coin = st.selectbox("Pilih Coin", coins)
 
-# === Tombol Analisa ===
-if st.button("🔍 Mulai Analisa"):
-    st.subheader(f"📈 Chart Candle Matplotlib: {selected_ticker.upper()}")
+# Ambil harga close terakhir (misal 30 candle harian)
+closes = analisa_pg.get_last_30_daily_closes(selected_coin)
 
-    # Ambil data close harga terakhir
-    closes = analisa_pg.get_last_n_closes(selected_ticker, 30)
-    if len(closes) < 5:
-        st.warning("Data candle tidak cukup untuk ditampilkan.")
-    else:
-        # Buat dataframe candle simulasi OHLC dari close
-        df = pd.DataFrame({
-            'close': closes,
-            'open': closes[:-1] + np.random.uniform(-0.5, 0.5, len(closes)-1).tolist() + [closes[-1]],
-        })
-        df['high'] = df[['open', 'close']].max(axis=1) + np.random.uniform(0, 0.3, len(closes))
-        df['low'] = df[['open', 'close']].min(axis=1) - np.random.uniform(0, 0.3, len(closes))
-        df['date'] = pd.date_range(end=pd.Timestamp.today(), periods=len(closes))
+if len(closes) < 10:
+    st.warning("Data candle kurang dari 10 — minimal butuh 10 untuk analisa.")
+    st.stop()
 
-        # Plot Chart Candle Matplotlib
-        fig, ax = plt.subplots(figsize=(12, 5))
-        for idx, row in df.iterrows():
-            color = 'green' if row['close'] >= row['open'] else 'red'
-            ax.plot([idx, idx], [row['low'], row['high']], color='black')
-            ax.add_patch(plt.Rectangle(
-                (idx - 0.3, min(row['open'], row['close'])),
-                0.6,
-                abs(row['open'] - row['close']),
-                color=color
-            ))
+# Simulasi open, high, low
+opens = [closes[0]]
+highs, lows = [], []
+for i in range(1, len(closes)):
+    open_price = closes[i-1] + np.random.uniform(-0.5, 0.5)
+    high_price = max(open_price, closes[i]) + np.random.uniform(0.1, 0.5)
+    low_price = min(open_price, closes[i]) - np.random.uniform(0.1, 0.5)
 
-        ax.set_xticks(range(0, len(df), 5))
-        ax.set_xticklabels(df['date'].dt.strftime('%m-%d').iloc[::5])
-        ax.set_title(f'Candlestick Chart {selected_ticker.upper()} (30 Daily Closes)')
-        ax.grid(True)
-        st.pyplot(fig)
+    opens.append(open_price)
+    highs.append(high_price)
+    lows.append(low_price)
 
-    st.subheader(f"📊 TradingView Chart: {selected_ticker.upper()}")
+# Lengkapi high & low pertama
+highs.insert(0, max(opens[0], closes[0]) + np.random.uniform(0.1, 0.5))
+lows.insert(0, min(opens[0], closes[0]) - np.random.uniform(0.1, 0.5))
 
-    # TradingView Embed
-    pair = selected_ticker.upper()
-    tradingview_url = f"https://s.tradingview.com/widgetembed/?frameElementId=tradingview_12c5a&symbol=INDODAX:{pair}&interval=D&theme=dark&style=1&timezone=Asia%2FJakarta"
-    st.components.v1.iframe(tradingview_url, height=500)
+# Buat DataFrame candle
+dates = pd.date_range(end=datetime.today(), periods=len(closes))
+df = pd.DataFrame({
+    'Date': dates,
+    'Open': opens,
+    'High': highs,
+    'Low': lows,
+    'Close': closes
+}).set_index('Date')
 
-else:
-    st.info("Silakan pilih coin dan klik **Mulai Analisa**.")
+# Hitung indikator
+df['MA20'] = df['Close'].rolling(20).mean()
+df['Upper_BB'] = df['MA20'] + 2 * df['Close'].rolling(20).std()
+df['Lower_BB'] = df['MA20'] - 2 * df['Close'].rolling(20).std()
+df['RSI'] = ta.momentum.RSIIndicator(df['Close'], window=14).rsi()
+macd = ta.trend.MACD(df['Close'])
+df['MACD'] = macd.macd()
+df['MACD_signal'] = macd.macd_signal()
 
+# === Candlestick chart dengan mplfinance ===
+st.subheader("📈 Chart Candlestick")
+
+# Style chart
+mc = mpf.make_marketcolors(up='green', down='red', inherit=True)
+s = mpf.make_mpf_style(marketcolors=mc)
+
+# Plot
+mpf_fig, axlist = mpf.plot(df, type='candle', mav=(20,), volume=False, style=s, returnfig=True)
+st.pyplot(mpf_fig)
+
+# === Plot indikator tambahan ===
+st.subheader("📊 Indikator Teknis")
+
+import matplotlib.pyplot as plt
+
+fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+
+# Plot MA & Bollinger Bands
+axs[0].plot(df.index, df['Close'], label='Close', color='black')
+axs[0].plot(df.index, df['MA20'], label='MA20', color='blue')
+axs[0].fill_between(df.index, df['Upper_BB'], df['Lower_BB'], color='lightgray', alpha=0.5)
+axs[0].set_title("Harga + MA20 + Bollinger Bands")
+axs[0].legend()
+
+# Plot RSI
+axs[1].plot(df.index, df['RSI'], label='RSI', color='purple')
+axs[1].axhline(70, color='red', linestyle='--')
+axs[1].axhline(30, color='green', linestyle='--')
+axs[1].set_title("RSI (14)")
+
+# Plot MACD
+axs[2].plot(df.index, df['MACD'], label='MACD', color='blue')
+axs[2].plot(df.index, df['MACD_signal'], label='Signal', color='orange')
+axs[2].set_title("MACD")
+axs[2].legend()
+
+plt.tight_layout()
+st.pyplot(fig)
+
+# Update info
+st.info(f"Data terakhir diambil {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
