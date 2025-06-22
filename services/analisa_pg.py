@@ -2,7 +2,7 @@ import psycopg2
 import streamlit as st
 import numpy as np
 import pandas as pd
-from services.database_pg import get_all_tickers
+from services.analisa_pg import get_all_tickers
 from services.database_pg import get_conn
 
 def get_last_n_closes(ticker, n=30):
