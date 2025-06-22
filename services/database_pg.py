@@ -9,7 +9,8 @@ def get_conn():
         password=st.secrets["DB_PASSWORD"],
         host=st.secrets["DB_HOST"],
         port=st.secrets["DB_PORT"],
-        sslmode=st.secrets["DB_SSLMODE"]
+        sslmode=st.secrets["DB_SSLMODE"],
+        connect_timeout=10
     )
 
 def init_db():
@@ -205,20 +206,20 @@ def get_price_history_since(ticker, since_date):
         return []
 
 def get_last_30_daily_closes(ticker):
+    """Ambil 30 harga terakhir per hari untuk analisis candle"""
     try:
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
-            SELECT last FROM ticker_history
-            WHERE ticker = %s AND timestamp::date IN (
-                SELECT DISTINCT timestamp::date 
+            SELECT last FROM (
+                SELECT DISTINCT ON (DATE(timestamp)) DATE(timestamp) as tgl, last
                 FROM ticker_history
                 WHERE ticker = %s
-                ORDER BY timestamp::date DESC
-                LIMIT 30
-            )
-            ORDER BY timestamp DESC
-        """, (ticker, ticker))
+                ORDER BY DATE(timestamp) DESC, timestamp DESC
+            ) AS daily_prices
+            ORDER BY tgl DESC
+            LIMIT 30
+        """, (ticker,))
         rows = cur.fetchall()
         cur.close()
         conn.close()
@@ -226,4 +227,6 @@ def get_last_30_daily_closes(ticker):
     except psycopg2.Error as e:
         st.error(f"❌ Error get_last_30_daily_closes: {e}")
         return []
+
+
 
