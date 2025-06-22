@@ -3,7 +3,6 @@ from services.database_pg import get_all_tickers
 from services import analisa_pg
 
 st.title("📊 Analisa Teknikal")
-
 # Pilih koin dari database
 coin = st.selectbox("Pilih Coin", get_all_tickers())
 
