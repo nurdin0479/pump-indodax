@@ -4,7 +4,7 @@ from datetime import datetime
 from services import database_pg, detector
 from streamlit_autorefresh import st_autorefresh
 
-# Inisialisasi DB
+# Inisialisasi database
 database_pg.init_db()
 
 # Setting halaman
@@ -45,19 +45,18 @@ for d in data:
     last = d['last']
     vol_idr = d['vol_idr']
 
-    # Simpan histori harga & volume
+    # Simpan histori harga & volume ke database
     database_pg.save_ticker_history(ticker, last, vol_idr)
 
     # Deteksi pump
     is_pump, result = detector.is_valid_pump(ticker, price_threshold, volume_threshold)
+
     if is_pump:
+        # Kirim notifikasi Telegram
         detector.send_telegram_message(
             f"🚨 PUMP DETECTED {result['ticker'].upper()}\n"
             f"Harga: {result['harga_sebelum']} ➡️ {result['harga_sekarang']} (+{result['kenaikan_harga']:.2f}%)\n"
             f"Volume: +{result['kenaikan_volume']:.2f}%\n"
-            f"MA Harga: {result['ma_harga']}\n"
-            f"MA Volume: {result['ma_volume']}\n"
-            f"Consecutive Up: {result['consecutive_up']}x\n"
             f"Jam: {result['timestamp']}"
         )
         detected_pumps.append(result)
@@ -65,7 +64,7 @@ for d in data:
 # Tampilkan tabel pump kalau ada
 if detected_pumps:
     st.subheader("📈 Pump Terdeteksi Saat Ini")
-    st.dataframe(pd.DataFrame(detected_pumps))
+    st.dataframe(pd.DataFrame(detected_pumps), use_container_width=True)
 
 # Waktu update terakhir
 st.write(f"🕒 Update terakhir: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} WIB")
