@@ -3,7 +3,9 @@ from services import analisa_pg
 
 st.title("📊 Analisa Teknikal")
 
-coin = st.selectbox("Pilih Coin", analisa_pg.get_all_tickers())
+coin = st.selectbox("Pilih Coin", get_all_tickers())
+
+
 if st.button("🔍 Mulai Analisa"):
     closes = analisa_pg.get_last_n_closes(coin)
     st.write(f"Data Harga Terakhir: {closes}")
