@@ -226,3 +226,4 @@ def get_last_30_daily_closes(ticker):
     except psycopg2.Error as e:
         st.error(f"❌ Error get_last_30_daily_closes: {e}")
         return []
+
