@@ -18,6 +18,7 @@ def init_db():
         conn = get_conn()
         cur = conn.cursor()
 
+        # Table ticker history
         cur.execute("""
             CREATE TABLE IF NOT EXISTS ticker_history (
                 id SERIAL PRIMARY KEY,
@@ -28,6 +29,7 @@ def init_db():
             )
         """)
 
+        # Table pump history
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pump_history (
                 id SERIAL PRIMARY KEY,
@@ -36,6 +38,22 @@ def init_db():
                 harga_sekarang REAL,
                 kenaikan_harga REAL,
                 kenaikan_volume REAL,
+                timestamp TEXT
+            )
+        """)
+
+        # Table price/volume event log
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS price_event_log (
+                id SERIAL PRIMARY KEY,
+                ticker TEXT,
+                harga_sebelum REAL,
+                harga_sekarang REAL,
+                kenaikan_harga REAL,
+                kenaikan_volume REAL,
+                ma_harga REAL,
+                ma_volume REAL,
+                consecutive_up INTEGER,
                 timestamp TEXT
             )
         """)
@@ -112,4 +130,43 @@ def get_pump_history(limit=50):
         return rows
     except psycopg2.Error as e:
         st.error(f"❌ Error get_pump_history: {e}")
+        return []
+
+def save_price_event_log(data):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO price_event_log 
+            (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, ma_harga, ma_volume, consecutive_up, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
+            data['kenaikan_harga'], data['kenaikan_volume'], 
+            data['ma_harga'], data['ma_volume'], data['consecutive_up'],
+            data['timestamp']
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except psycopg2.Error as e:
+        st.error(f"❌ Error save_price_event_log: {e}")
+
+def get_price_event_log(limit=50):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, 
+                   ma_harga, ma_volume, consecutive_up, timestamp
+            FROM price_event_log
+            ORDER BY id DESC
+            LIMIT %s
+        """, (limit,))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return rows
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_price_event_log: {e}")
         return []
