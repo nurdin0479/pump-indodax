@@ -6,3 +6,5 @@ requests
 pytz
 numpy
 matplotlib
+mplfinance
+ta
