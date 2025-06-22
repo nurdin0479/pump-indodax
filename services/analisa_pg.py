@@ -110,3 +110,22 @@ def plot_price_chart(df, ticker):
     ax.set_title(f"{ticker} Price with Moving Averages")
     ax.legend()
     st.pyplot(fig)
+
+def get_last_n_closes(ticker, n):
+    """Ambil n harga close terakhir untuk analisis teknikal"""
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT last FROM ticker_history
+            WHERE ticker = %s
+            ORDER BY timestamp DESC
+            LIMIT %s
+        """, (ticker, n))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [r[0] for r in rows]
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_last_n_closes: {e}")
+        return []
