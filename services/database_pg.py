@@ -170,3 +170,19 @@ def get_price_event_log(limit=50):
     except psycopg2.Error as e:
         st.error(f"❌ Error get_price_event_log: {e}")
         return []
+    
+def get_all_tickers():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT DISTINCT ticker FROM ticker_history
+            ORDER BY ticker
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return [r[0] for r in rows]
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_all_tickers: {e}")
+        return []
