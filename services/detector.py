@@ -13,10 +13,9 @@ def fetch_indodax_data():
     url = "https://indodax.com/api/tickers"
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()  # error kalau status code != 200
+        response.raise_for_status()
 
         data = response.json()
-
         if 'tickers' not in data:
             st.error("❌ Response API Indodax tidak berisi key 'tickers'.")
             return []
@@ -30,7 +29,7 @@ def fetch_indodax_data():
                     "vol_idr": float(info["vol_idr"])
                 })
             except (KeyError, ValueError):
-                continue  # skip kalau data error
+                continue
 
         return result
 
@@ -41,44 +40,53 @@ def fetch_indodax_data():
         st.error("❌ Error parsing JSON dari API.")
         return []
 
-def is_valid_pump(ticker, price_threshold, volume_threshold, window=3):
-    # Ambil data 4 harga & volume terakhir
-    rows = database_pg.get_recent_price_volume(ticker, limit=window+1)
-    if len(rows) < window+1:
+def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_consecutive_up=3):
+    """Deteksi pump profesional berbasis MA dan tren harga"""
+    rows = database_pg.get_recent_price_volume(ticker, limit=window)
+    if len(rows) < window:
         return False, None
 
     prices = [row[0] for row in rows]
     volumes = [row[1] for row in rows]
 
-    # Validasi harga naik 3x berturut-turut
-    if not (prices[0] > prices[1] > prices[2] > prices[3]):
-        return False, None
+    price_ma = sum(prices) / len(prices)
+    volume_ma = sum(volumes) / len(volumes)
 
-    # Hitung kenaikan harga & volume
-    price_change = ((prices[0] - prices[3]) / prices[3]) * 100 if prices[3] else 0
-    volume_change = ((volumes[0] - volumes[3]) / volumes[3]) * 100 if volumes[3] else 0
+    consecutive_up = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
 
-    # Validasi threshold pump
-    if price_change >= price_threshold and volume_change >= volume_threshold:
-        timestamp = datetime.now(wib).strftime('%Y-%m-%d %H:%M:%S')
+    price_change = ((prices[-1] - prices[0]) / prices[0]) * 100 if prices[0] else 0
+    volume_change = ((volumes[-1] - volumes[0]) / volumes[0]) * 100 if volumes[0] else 0
 
-        data = {
-            "ticker": ticker,
-            "harga_sebelum": round(prices[3], 2),
-            "harga_sekarang": round(prices[0], 2),
-            "kenaikan_harga": round(price_change, 2),
-            "kenaikan_volume": round(volume_change, 2),
-            "timestamp": timestamp
-        }
+    timestamp = datetime.now(wib).strftime('%Y-%m-%d %H:%M:%S')
 
-        # Simpan log pump ke database
+    data = {
+        "ticker": ticker,
+        "harga_sebelum": round(prices[0], 2),
+        "harga_sekarang": round(prices[-1], 2),
+        "kenaikan_harga": round(price_change, 2),
+        "kenaikan_volume": round(volume_change, 2),
+        "ma_harga": round(price_ma, 2),
+        "ma_volume": round(volume_ma, 2),
+        "consecutive_up": consecutive_up,
+        "timestamp": timestamp
+    }
+
+    # Simpan log event ke price_event_log
+    if consecutive_up >= 2 and (price_change >= 1.0 or volume_change >= 5.0):
+        database_pg.save_price_event_log(data)
+
+    # Validasi kondisi pump
+    if (consecutive_up >= min_consecutive_up and
+        price_change >= price_threshold and
+        volume_change >= volume_threshold and
+        prices[-1] > price_ma * 1.01 and
+        volumes[-1] > volume_ma * 1.05):
+
+        # Simpan pump ke log pump_history
         database_pg.save_pump_log(data)
+        return True, data
 
-        return True, data  # <-- HANYA kalau pump terdeteksi
-
-    return False, None  # <-- Kalau tidak valid
-
-
+    return False, None
 
 def send_telegram_message(message):
     try:
