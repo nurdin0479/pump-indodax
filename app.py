@@ -3,6 +3,10 @@ import pandas as pd
 from datetime import datetime
 from services import database_pg, detector
 from streamlit_autorefresh import st_autorefresh
+from services import database_pg
+
+database_pg.init_connection_pool()
+
 
 # Inisialisasi database
 database_pg.init_db()
