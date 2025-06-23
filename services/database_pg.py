@@ -1,25 +1,56 @@
 import psycopg2
-from psycopg2 import sql
+from psycopg2 import pool
 import streamlit as st
 
+# --- Connection Pool global ---
+db_pool = None
+
+def init_connection_pool(minconn=1, maxconn=10):
+    """Inisialisasi koneksi pool"""
+    global db_pool
+    if db_pool is None:
+        try:
+            db_pool = psycopg2.pool.SimpleConnectionPool(
+                minconn,
+                maxconn,
+                dbname=st.secrets["DB_NAME"],
+                user=st.secrets["DB_USER"],
+                password=st.secrets["DB_PASSWORD"],
+                host=st.secrets["DB_HOST"],
+                port=st.secrets["DB_PORT"],
+                sslmode=st.secrets["DB_SSLMODE"],
+                connect_timeout=10
+            )
+            print("✅ Connection pool created")
+        except psycopg2.Error as e:
+            st.error(f"❌ Error init connection pool: {e}")
+
 def get_conn():
-    return psycopg2.connect(
-        dbname=st.secrets["DB_NAME"],
-        user=st.secrets["DB_USER"],
-        password=st.secrets["DB_PASSWORD"],
-        host=st.secrets["DB_HOST"],
-        port=st.secrets["DB_PORT"],
-        sslmode=st.secrets["DB_SSLMODE"],
-        connect_timeout=10
-    )
+    """Ambil koneksi dari pool"""
+    global db_pool
+    if db_pool is None:
+        init_connection_pool()
+    return db_pool.getconn()
+
+def release_conn(conn):
+    """Balikkan koneksi ke pool"""
+    if conn:
+        db_pool.putconn(conn)
+
+def close_all_connections():
+    """Tutup semua koneksi dalam pool"""
+    global db_pool
+    if db_pool:
+        db_pool.closeall()
+        print("✅ All connections closed")
 
 def init_db():
     """Create table kalau belum ada"""
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
 
-        # Table ticker history
         cur.execute("""
             CREATE TABLE IF NOT EXISTS ticker_history (
                 id SERIAL PRIMARY KEY,
@@ -30,7 +61,6 @@ def init_db():
             )
         """)
 
-        # Table pump history
         cur.execute("""
             CREATE TABLE IF NOT EXISTS pump_history (
                 id SERIAL PRIMARY KEY,
@@ -43,7 +73,6 @@ def init_db():
             )
         """)
 
-        # Table price/volume event log
         cur.execute("""
             CREATE TABLE IF NOT EXISTS price_event_log (
                 id SERIAL PRIMARY KEY,
@@ -61,12 +90,16 @@ def init_db():
 
         conn.commit()
         cur.close()
-        conn.close()
-
     except psycopg2.Error as e:
         st.error(f"❌ Error inisialisasi database: {e}")
+    finally:
+        if conn:
+            release_conn(conn)
+
+# --- Function CRUD ---
 
 def save_ticker_history(ticker, last, vol_idr):
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -76,11 +109,14 @@ def save_ticker_history(ticker, last, vol_idr):
         """, (ticker, last, vol_idr))
         conn.commit()
         cur.close()
-        conn.close()
     except psycopg2.Error as e:
-        st.error(f"❌ Error save ticker history: {e}")
+        st.error(f"❌ Error save_ticker_history: {e}")
+    finally:
+        if conn:
+            release_conn(conn)
 
 def get_recent_price_volume(ticker, limit=4):
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -92,13 +128,16 @@ def get_recent_price_volume(ticker, limit=4):
         """, (ticker, limit))
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return rows
     except psycopg2.Error as e:
         st.error(f"❌ Error get_recent_price_volume: {e}")
         return []
+    finally:
+        if conn:
+            release_conn(conn)
 
 def save_pump_log(data):
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -111,11 +150,14 @@ def save_pump_log(data):
         ))
         conn.commit()
         cur.close()
-        conn.close()
     except psycopg2.Error as e:
         st.error(f"❌ Error save_pump_log: {e}")
+    finally:
+        if conn:
+            release_conn(conn)
 
 def get_pump_history(limit=50):
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -127,13 +169,16 @@ def get_pump_history(limit=50):
         """, (limit,))
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return rows
     except psycopg2.Error as e:
         st.error(f"❌ Error get_pump_history: {e}")
         return []
+    finally:
+        if conn:
+            release_conn(conn)
 
 def save_price_event_log(data):
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -143,17 +188,20 @@ def save_price_event_log(data):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
-            data['kenaikan_harga'], data['kenaikan_volume'], 
+            data['kenaikan_harga'], data['kenaikan_volume'],
             data['ma_harga'], data['ma_volume'], data['consecutive_up'],
             data['timestamp']
         ))
         conn.commit()
         cur.close()
-        conn.close()
     except psycopg2.Error as e:
         st.error(f"❌ Error save_price_event_log: {e}")
+    finally:
+        if conn:
+            release_conn(conn)
 
 def get_price_event_log(limit=50):
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -166,13 +214,16 @@ def get_price_event_log(limit=50):
         """, (limit,))
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return rows
     except psycopg2.Error as e:
         st.error(f"❌ Error get_price_event_log: {e}")
         return []
-    
+    finally:
+        if conn:
+            release_conn(conn)
+
 def get_all_tickers():
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -182,13 +233,16 @@ def get_all_tickers():
         """)
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return [r[0] for r in rows]
     except psycopg2.Error as e:
         st.error(f"❌ Error get_all_tickers: {e}")
         return []
+    finally:
+        if conn:
+            release_conn(conn)
 
 def get_price_history_since(ticker, since_date):
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -199,14 +253,16 @@ def get_price_history_since(ticker, since_date):
         """, (ticker, since_date))
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return rows
     except psycopg2.Error as e:
         st.error(f"❌ Error get_price_history_since: {e}")
         return []
+    finally:
+        if conn:
+            release_conn(conn)
 
 def get_last_30_daily_closes(ticker):
-    """Ambil 30 harga terakhir per hari untuk analisis candle"""
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -222,11 +278,10 @@ def get_last_30_daily_closes(ticker):
         """, (ticker,))
         rows = cur.fetchall()
         cur.close()
-        conn.close()
         return [r[0] for r in rows]
     except psycopg2.Error as e:
         st.error(f"❌ Error get_last_30_daily_closes: {e}")
         return []
-
-
-
+    finally:
+        if conn:
+            release_conn(conn)
