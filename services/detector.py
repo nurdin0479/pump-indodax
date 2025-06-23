@@ -40,8 +40,8 @@ def fetch_indodax_data():
         st.error("❌ Error parsing JSON dari API.")
         return []
 
-def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_consecutive_up=3):
-    """Deteksi pump profesional berbasis MA dan tren harga"""
+def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_consecutive_up=3, price_delta=1.0, spike_factor=1.5):
+    """Deteksi pump profesional berbasis MA harga & volume + tren harga"""
     rows = database_pg.get_recent_price_volume(ticker, limit=window)
     if len(rows) < window:
         return False, None
@@ -75,18 +75,19 @@ def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_conse
     if consecutive_up >= 2 and (price_change >= 1.0 or volume_change >= 5.0):
         database_pg.save_price_event_log(data)
 
-    # Validasi kondisi pump
-    if (consecutive_up >= min_consecutive_up and
+    # Validasi pump profesional
+    if (
+        consecutive_up >= min_consecutive_up and
         price_change >= price_threshold and
         volume_change >= volume_threshold and
-        prices[-1] > price_ma * 1.01 and
-        volumes[-1] > volume_ma * 1.05):
-
-        # Simpan pump ke log pump_history
+        prices[-1] > price_ma * (1 + price_delta / 100) and
+        volumes[-1] > volume_ma * spike_factor
+    ):
         database_pg.save_pump_log(data)
         return True, data
 
     return False, None
+
 
 def send_telegram_message(message):
     try:
