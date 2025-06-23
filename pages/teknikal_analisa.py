@@ -6,14 +6,20 @@ st.title("📊 Analisa Teknikal Pro")
 # ✅ Ambil daftar ticker dari database
 tickers = analisa_pg.get_all_tickers()
 
+
+
 if not tickers:
     st.warning("Data ticker belum tersedia.")
 else:
     # ✅ Pilih koin dari selectbox
     selected_coin = st.selectbox("Pilih Coin", tickers)
 
+      # ✅ Tambah slider limit candle
+    limit = st.slider("Jumlah Candle Terakhir", 10, 100, 30, 5)
+
+
     if st.button("🔍 Mulai Analisa"):
-        closes = analisa_pg.get_last_n_closes(selected_coin, 30)
+        closes = analisa_pg.get_last_n_closes(selected_coin, limit)
 
         if len(closes) < 5:
             st.error("Data kurang dari 5 candle, belum bisa analisa.")
