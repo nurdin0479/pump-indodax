@@ -285,3 +285,20 @@ def get_last_30_daily_closes(ticker):
     finally:
         if conn:
             release_conn(conn)
+
+def get_price_history_since(ticker, since_date):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT last FROM ticker_history
+            WHERE ticker = %s AND timestamp >= %s
+            ORDER BY id DESC
+        """, (ticker, since_date))
+        rows = cur.fetchall()
+        cur.close()
+        release_conn(conn)  # <--- ini wajib ditambahkan!
+        return rows
+    except psycopg2.Error as e:
+        st.error(f"❌ Error get_price_history_since: {e}")
+        return []
