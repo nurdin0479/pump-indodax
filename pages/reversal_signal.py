@@ -1,61 +1,60 @@
 import streamlit as st
 import pandas as pd
 from services import database_pg
+import numpy as np
 
-st.set_page_config(page_title="Reversal Signal Indodax", layout="wide")
-st.title("📈 Downtrend & Potensi Reversal Detector")
+st.set_page_config(page_title="Reversal Signal Detector", layout="wide")
+st.title("📈 Reversal Signal Indodax (Breakout MA 5-9-14)")
 
-# Pilih coin
-# Ambil daftar coin dari database
+# Ambil semua coin dari database
 all_coins = database_pg.get_all_tickers()
 
 if not all_coins:
-    st.warning("⚠️ Data coin belum tersedia di database.")
+    st.warning("⚠️ Belum ada histori harga di database.")
     st.stop()
 
-selected_coin = st.selectbox("🪙 Pilih Coin", all_coins)
+# Parameter periode daily
+periode_cek = st.sidebar.slider("Jumlah hari histori dicek", 5, 30, 7, 1)
 
+# Load data & deteksi reversal
+hasil_reversal = []
 
+for coin in all_coins:
+    harga_data = database_pg.get_last_30_daily_closes(coin)
+    if len(harga_data) < (periode_cek + 5):
+        continue  # skip kalau histori kurang
 
+    harga_series = pd.Series(harga_data[::-1])  # urut lama ke baru
 
-# Pilih jumlah histori candle yang dicek
-limit = st.slider("Jumlah data candle terakhir", 5, 50, 10, 1)
+    # Hitung MA
+    ma5 = harga_series.rolling(5).mean()
+    ma9 = harga_series.rolling(9).mean()
+    ma14 = harga_series.rolling(14).mean()
 
-# Ambil data dari database
-price_logs = database_pg.get_recent_price_volume(selected_coin, limit=limit)
+    # Cek harga selama n hari ke belakang selalu di bawah MA5, MA9, MA14
+    is_downtrend = True
+    for i in range(-periode_cek-1, -1):
+        if (harga_series[i] > ma5[i]) or (harga_series[i] > ma9[i]) or (harga_series[i] > ma14[i]):
+            is_downtrend = False
+            break
 
-if not price_logs:
-    st.warning("❌ Belum ada histori harga untuk coin ini.")
+    if not is_downtrend:
+        continue
+
+    # Cek harga terakhir breakout ke atas semua MA
+    harga_terakhir = harga_series.iloc[-1]
+    if (harga_terakhir > ma5.iloc[-1]) and (harga_terakhir > ma9.iloc[-1]) and (harga_terakhir > ma14.iloc[-1]):
+        hasil_reversal.append({
+            "Ticker": coin,
+            "Harga Terakhir": harga_terakhir,
+            "MA5": round(ma5.iloc[-1], 2),
+            "MA9": round(ma9.iloc[-1], 2),
+            "MA14": round(ma14.iloc[-1], 2),
+        })
+
+# Tampilkan hasil
+if hasil_reversal:
+    st.success(f"✅ {len(hasil_reversal)} coin reversal terdeteksi.")
+    st.dataframe(pd.DataFrame(hasil_reversal), use_container_width=True)
 else:
-    # Ubah ke DataFrame
-    df = pd.DataFrame(price_logs, columns=["Harga", "Volume"])
-    df.index = range(1, len(df) + 1)
-
-    # Cek trend turun
-    consecutive_down = 0
-    for i in range(len(df) - 1):
-        if df.loc[i+1, "Harga"] > df.loc[i+2, "Harga"]:
-            consecutive_down += 1
-        else:
-            consecutive_down = 0
-
-    # Cek apakah candle terakhir rebound
-    rebound = False
-    if df.loc[1, "Harga"] > df.loc[2, "Harga"] * 1.005:
-        rebound = True
-
-    # Tampilkan chart harga
-    st.line_chart(df["Harga"])
-
-    # Hasil analisis
-    st.subheader("📊 Analisis Sinyal")
-    st.write(f"📉 Consecutive Down: {consecutive_down}x")
-    if consecutive_down >= 3 and rebound:
-        st.success("🚀 Potensi Reversal Terdeteksi!")
-    elif consecutive_down >= 3:
-        st.warning("⚠️ Downtrend masih kuat, belum ada sinyal reversal.")
-    else:
-        st.info("ℹ️ Trend normal atau naik.")
-
-    # Tampilkan tabel harga
-    st.dataframe(df, use_container_width=True)
+    st.info("ℹ️ Belum ada coin reversal hari ini.")
