@@ -1,4 +1,3 @@
-import psycopg2
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,32 +5,27 @@ import ta
 import mplfinance as mpf
 import matplotlib.pyplot as plt
 
-def get_conn():
-    return psycopg2.connect(
-        dbname=st.secrets["DB_NAME"],
-        user=st.secrets["DB_USER"],
-        password=st.secrets["DB_PASSWORD"],
-        host=st.secrets["DB_HOST"],
-        port=st.secrets["DB_PORT"],
-        sslmode=st.secrets["DB_SSLMODE"]
-    )
+from services import database_pg
+
+# Inisialisasi koneksi pool sekali di awal
+database_pg.init_connection_pool()
 
 def get_all_tickers():
     try:
-        conn = get_conn()
+        conn = database_pg.get_conn()
         cur = conn.cursor()
         cur.execute("SELECT DISTINCT ticker FROM ticker_history ORDER BY ticker")
         rows = cur.fetchall()
         cur.close()
         conn.close()
         return [r[0] for r in rows]
-    except psycopg2.Error as e:
+    except Exception as e:
         st.error(f"❌ Error get_all_tickers: {e}")
         return []
 
 def get_last_30_daily_closes(ticker):
     try:
-        conn = get_conn()
+        conn = database_pg.get_conn()
         cur = conn.cursor()
         cur.execute("""
             SELECT last FROM (
@@ -47,13 +41,13 @@ def get_last_30_daily_closes(ticker):
         cur.close()
         conn.close()
         return [r[0] for r in rows]
-    except psycopg2.Error as e:
+    except Exception as e:
         st.error(f"❌ Error get_last_30_daily_closes: {e}")
         return []
 
 def get_last_n_closes(ticker, n):
     try:
-        conn = get_conn()
+        conn = database_pg.get_conn()
         cur = conn.cursor()
         cur.execute("""
             SELECT last FROM ticker_history
@@ -64,14 +58,14 @@ def get_last_n_closes(ticker, n):
         rows = cur.fetchall()
         cur.close()
         conn.close()
-        return [r[0] for r in rows][::-1]  # urut lama ke baru
-    except psycopg2.Error as e:
+        return [r[0] for r in rows][::-1]
+    except Exception as e:
         st.error(f"❌ Error get_last_n_closes: {e}")
         return []
 
 def get_full_price_data(ticker):
     try:
-        conn = get_conn()
+        conn = database_pg.get_conn()
         cur = conn.cursor()
         cur.execute("""
             SELECT timestamp, last FROM ticker_history
@@ -85,7 +79,7 @@ def get_full_price_data(ticker):
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df.set_index('timestamp', inplace=True)
         return df
-    except psycopg2.Error as e:
+    except Exception as e:
         st.error(f"❌ Error get_full_price_data: {e}")
         return pd.DataFrame()
 
@@ -117,7 +111,7 @@ def plot_candlestick_chart(df, ticker):
 
     df_ohlc['open'] = df_ohlc['close'].shift(1)
     df_ohlc['high'] = df_ohlc[['open', 'close']].max(axis=1)
-    df_ohlc['low'] = df_ohlc[['open', 'close']].min(axis=1)
+    df_ohlc['low']  = df_ohlc[['open', 'close']].min(axis=1)
     df_ohlc = df_ohlc.dropna()
 
     fig, axlist = mpf.plot(
