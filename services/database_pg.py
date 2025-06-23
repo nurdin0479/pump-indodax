@@ -85,20 +85,6 @@ def init_db():
             kenaikan_volume REAL,
             timestamp TEXT
         )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS price_event_log (
-            id SERIAL PRIMARY KEY,
-            ticker TEXT,
-            harga_sebelum REAL,
-            harga_sekarang REAL,
-            kenaikan_harga REAL,
-            kenaikan_volume REAL,
-            ma_harga REAL,
-            ma_volume REAL,
-            consecutive_up INTEGER,
-            timestamp TEXT
-        )
         """
     ]
     for q in queries:
@@ -134,29 +120,6 @@ def get_pump_history(limit=50):
         SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, 
                kenaikan_volume, timestamp
         FROM pump_history
-        ORDER BY id DESC
-        LIMIT %s
-    """, (limit,), fetch=True)
-    return result or []
-
-def save_price_event_log(data):
-    execute_query("""
-        INSERT INTO price_event_log 
-        (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, 
-         kenaikan_volume, ma_harga, ma_volume, consecutive_up, timestamp)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
-        data['kenaikan_harga'], data['kenaikan_volume'],
-        data['ma_harga'], data['ma_volume'], data['consecutive_up'],
-        data['timestamp']
-    ))
-
-def get_price_event_log(limit=50):
-    result = execute_query("""
-        SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, 
-               kenaikan_volume, ma_harga, ma_volume, consecutive_up, timestamp
-        FROM price_event_log
         ORDER BY id DESC
         LIMIT %s
     """, (limit,), fetch=True)
