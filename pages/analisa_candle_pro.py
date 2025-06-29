@@ -11,22 +11,21 @@ st.set_page_config(page_title="📊 Analisa Candle Pro", layout="wide")
 st.title("📊 Analisa Candlestick & Indikator Pro")
 
 try:
-    # Ambil list coin
+    # --- Ambil list coin ---
     coins = analisa_pg.get_all_tickers()
     if not coins:
         st.error("❌ Belum ada data ticker. Jalankan fetch harga dulu.")
         st.stop()
 
-    # Pilih coin
-    selected_coin = st.selectbox("Pilih Coin", coins)
+    selected_coin = st.selectbox("📌 Pilih Coin", coins)
 
-    # Ambil harga close terakhir
+    # --- Ambil harga close terakhir ---
     closes = analisa_pg.get_last_30_daily_closes(selected_coin)
     if len(closes) < 10:
         st.warning("⚠️ Data candle kurang dari 10 — minimal butuh 10 candle untuk analisa.")
         st.stop()
 
-    # Simulasi open, high, low
+    # --- Simulasi open, high, low ---
     opens = [closes[0]]
     highs, lows = [], []
     for i in range(1, len(closes)):
@@ -39,7 +38,7 @@ try:
     highs.insert(0, max(opens[0], closes[0]) + np.random.uniform(0.1, 0.5))
     lows.insert(0, min(opens[0], closes[0]) - np.random.uniform(0.1, 0.5))
 
-    # Buat DataFrame candle
+    # --- Buat DataFrame candle ---
     dates = pd.date_range(end=datetime.today(), periods=len(closes))
     df = pd.DataFrame({
         'Date': dates,
@@ -49,7 +48,7 @@ try:
         'Close': closes
     }).set_index('Date')
 
-    # Hitung indikator
+    # --- Hitung indikator teknikal ---
     df['MA20'] = df['Close'].rolling(20).mean()
     df['Upper_BB'] = df['MA20'] + 2 * df['Close'].rolling(20).std()
     df['Lower_BB'] = df['MA20'] - 2 * df['Close'].rolling(20).std()
@@ -58,18 +57,18 @@ try:
     df['MACD'] = macd.macd()
     df['MACD_signal'] = macd.macd_signal()
 
-    # === Candlestick chart ===
-    st.subheader("📈 Chart Candlestick")
+    # --- Candlestick Chart ---
+    st.subheader("📈 Candlestick Chart")
     mc = mpf.make_marketcolors(up='green', down='red', inherit=True)
     s = mpf.make_mpf_style(marketcolors=mc)
     mpf_fig, _ = mpf.plot(df, type='candle', mav=(20,), volume=False, style=s, returnfig=True)
     st.pyplot(mpf_fig)
 
-    # === Plot indikator tambahan ===
+    # --- Plot Indikator Teknis ---
     st.subheader("📊 Indikator Teknis")
     fig, axs = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
-    # MA & Bollinger Bands
+    # MA20 & Bollinger Bands
     axs[0].plot(df.index, df['Close'], label='Close', color='black')
     axs[0].plot(df.index, df['MA20'], label='MA20', color='blue')
     axs[0].fill_between(df.index, df['Upper_BB'], df['Lower_BB'], color='lightgray', alpha=0.4)
@@ -91,6 +90,7 @@ try:
     plt.tight_layout()
     st.pyplot(fig)
 
+    # --- Update waktu ---
     st.success(f"✅ Data terakhir: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} WIB")
 
 except Exception as e:
