@@ -1,24 +1,28 @@
 import psycopg2
 from psycopg2 import pool
+from urllib.parse import urlparse
 import streamlit as st
 
 # --- Connection Pool global ---
 db_pool = None
 
 def init_connection_pool(minconn=1, maxconn=10):
-    """Inisialisasi koneksi pool"""
+    """Inisialisasi connection pool untuk Postgres (Aiven/Neon)"""
     global db_pool
     if db_pool is None:
         try:
+            db_url = st.secrets["DATABASE_URL"]
+            result = urlparse(db_url)
+
             db_pool = psycopg2.pool.SimpleConnectionPool(
                 minconn,
                 maxconn,
-                dbname=st.secrets["DB_NAME"],
-                user=st.secrets["DB_USER"],
-                password=st.secrets["DB_PASSWORD"],
-                host=st.secrets["DB_HOST"],
-                port=st.secrets["DB_PORT"],
-                sslmode=st.secrets["DB_SSLMODE"],
+                dbname=result.path[1:],    # buang leading '/'
+                user=result.username,
+                password=result.password,
+                host=result.hostname,
+                port=result.port,
+                sslmode="require",
                 connect_timeout=10
             )
             print("✅ Connection pool created")
@@ -99,11 +103,10 @@ def save_ticker_history(ticker, last, vol_idr):
     """, (ticker, last, vol_idr))
 
 def get_recent_price_volume(ticker, limit=4):
-    result = execute_query("""
+    return execute_query("""
         SELECT last, vol_idr FROM ticker_history
         WHERE ticker = %s ORDER BY id DESC LIMIT %s
-    """, (ticker, limit), fetch=True)
-    return result or []
+    """, (ticker, limit), fetch=True) or []
 
 def save_pump_log(data):
     execute_query("""
@@ -116,14 +119,13 @@ def save_pump_log(data):
     ))
 
 def get_pump_history(limit=50):
-    result = execute_query("""
+    return execute_query("""
         SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, 
                kenaikan_volume, timestamp
         FROM pump_history
         ORDER BY id DESC
         LIMIT %s
-    """, (limit,), fetch=True)
-    return result or []
+    """, (limit,), fetch=True) or []
 
 def get_all_tickers():
     result = execute_query("""
@@ -132,12 +134,11 @@ def get_all_tickers():
     return [r[0] for r in result] if result else []
 
 def get_price_history_since(ticker, since_date):
-    result = execute_query("""
+    return execute_query("""
         SELECT last FROM ticker_history
         WHERE ticker = %s AND timestamp >= %s
         ORDER BY id DESC
-    """, (ticker, since_date), fetch=True)
-    return result or []
+    """, (ticker, since_date), fetch=True) or []
 
 def get_last_30_daily_closes(ticker):
     result = execute_query("""
