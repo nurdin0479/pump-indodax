@@ -8,7 +8,7 @@ from functools import wraps
 # --- Connection Pool Configuration ---
 DB_POOL = None
 MAX_CONN = 5  # Conservative limit for Aiven Free (20 max)
-CONN_TIMEOUT = 5  # seconds
+CONN_TIMEOUT = 5  # seconds for connection establishment
 RETRY_DELAY = 1  # base delay for retries in seconds
 
 # --- Decorators ---
@@ -73,8 +73,8 @@ def get_connection():
         init_connection_pool()
     
     try:
-        # Try to get connection from pool with timeout
-        return DB_POOL.getconn(timeout=CONN_TIMEOUT)
+        # Removed timeout parameter from getconn()
+        return DB_POOL.getconn()
     except psycopg2.pool.PoolError as e:
         print(f"⚠️ Connection pool exhausted, creating direct connection: {str(e)}")
         try:
@@ -359,6 +359,10 @@ def get_pool_status():
 
 # --- Initialize when imported ---
 if 'DB_INITIALIZED' not in st.session_state:
-    init_connection_pool()
-    init_db_schema()
-    st.session_state.DB_INITIALIZED = True
+    try:
+        init_connection_pool()
+        init_db_schema()
+        st.session_state.DB_INITIALIZED = True
+    except Exception as e:
+        st.error(f"❌ Failed to initialize database: {str(e)}")
+        close_all_connections()
