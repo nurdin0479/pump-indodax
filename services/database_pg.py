@@ -210,6 +210,14 @@ def save_price_event_log(data):
          data['kenaikan_harga'], data['kenaikan_volume'],
          data['ma_harga'], data['ma_volume'], data['consecutive_up'])
     )
+def check_db_health():
+    """Cek apakah database bisa diakses"""
+    try:
+        result = execute_query("SELECT 1", fetchone=True)
+        return result[0] == 1 if result else False
+    except Exception as e:
+        print(f"❌ DB Health Check Failed: {e}")
+        return False
 
 # --- Get Pool Status ---
 def get_pool_status():
