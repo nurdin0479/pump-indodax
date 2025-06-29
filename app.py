@@ -18,14 +18,13 @@ except ImportError as e:
 def initialize_database():
     """Initialize database connection with error handling"""
     try:
-        if not database_pg.init_connection_pool():
-            st.error("Failed to initialize database connection pool")
+        database_pg.init_connection_pool()  # pool init
+        database_pg.init_db_schema()        # schema init
+
+        if not database_pg.check_db_health():
+            st.error("❌ Database connection unhealthy after initialization")
             return False
-        
-        if not database_pg.init_db_schema():
-            st.error("Failed to initialize database schema")
-            return False
-            
+
         return True
     except Exception as e:
         st.error(f"❌ Database initialization failed: {str(e)}")
