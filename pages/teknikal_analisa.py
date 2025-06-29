@@ -2,6 +2,7 @@ import streamlit as st
 from services import analisa_pg
 import pandas as pd
 
+
 st.title("📊 Analisa Teknikal Pro")
 # ✅ Ambil daftar ticker dari database
 tickers = analisa_pg.get_all_tickers()

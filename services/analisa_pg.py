@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from services import database_pg
+import matplotlib.pyplot as plt
+import mplfinance as mpf
 
 # Inisialisasi pool saat import pertama
 database_pg.init_connection_pool()
@@ -116,3 +118,44 @@ def get_support_resistance_levels(data):
         st.error(f"❌ Error get_support_resistance_levels: {e}")
         return None, None
 
+def plot_price_chart(df, ticker):
+    """Plot harga closing + MA5 & MA20"""
+    try:
+        fig, ax = plt.subplots(figsize=(10,5))
+        df['close'].plot(ax=ax, label='Close Price', color='black')
+        if 'MA5' in df.columns:
+            df['MA5'].plot(ax=ax, label='MA5', color='blue')
+        if 'MA20' in df.columns:
+            df['MA20'].plot(ax=ax, label='MA20', color='orange')
+        ax.set_title(f"{ticker} - Price + MA5 MA20")
+        ax.legend()
+        plt.tight_layout()
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"❌ Error plot_price_chart: {e}")
+
+def plot_candlestick_chart(df, ticker):
+    """Plot candlestick chart"""
+    try:
+        mc = mpf.make_marketcolors(up='green', down='red', inherit=True)
+        s = mpf.make_mpf_style(marketcolors=mc)
+
+        df_ohlc = df.resample('1H').agg({
+            'close': 'last'
+        }).dropna()
+
+        df_ohlc['open'] = df_ohlc['close'].shift(1)
+        df_ohlc['high'] = df_ohlc[['open', 'close']].max(axis=1)
+        df_ohlc['low']  = df_ohlc[['open', 'close']].min(axis=1)
+        df_ohlc = df_ohlc.dropna()
+
+        fig, axlist = mpf.plot(
+            df_ohlc[['open','high','low','close']],
+            type='candle',
+            style=s,
+            title=f'{ticker} - Candlestick Chart',
+            returnfig=True
+        )
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"❌ Error plot_candlestick_chart: {e}")        
