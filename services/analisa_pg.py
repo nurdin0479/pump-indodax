@@ -81,3 +81,25 @@ def get_full_price_data(ticker):
     finally:
         cur.close()
         database_pg.release_connection(conn)
+
+import ta  # pastikan sudah di-import di atas jika belum
+
+def calculate_indicators(df):
+    """Hitung MA5, MA20, RSI, Bollinger Bands ke DataFrame harga"""
+    try:
+        df['MA5'] = df['close'].rolling(window=5).mean()
+        df['MA20'] = df['close'].rolling(window=20).mean()
+
+        df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
+
+        bb = ta.volatility.BollingerBands(df['close'], window=20)
+        df['UpperBand'] = bb.bollinger_hband()
+        df['MiddleBand'] = bb.bollinger_mavg()
+        df['LowerBand'] = bb.bollinger_lband()
+
+        df.fillna(method='bfill', inplace=True)
+        return df
+
+    except Exception as e:
+        st.error(f"❌ Error calculate_indicators: {e}")
+        return df
