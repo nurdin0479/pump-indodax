@@ -1,32 +1,50 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from services import database_pg, detector
 from streamlit_autorefresh import st_autorefresh
+import sys
+import os
+
+# Add services directory to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'services')))
+
+try:
+    from services import database_pg, detector
+except ImportError as e:
+    st.error(f"❌ Failed to import required modules: {str(e)}")
+    st.stop()
 
 # --- App Initialization ---
-def initialize_app():
-    """Initialize all application components"""
+def initialize_database():
+    """Initialize database connection with error handling"""
     try:
-        # Initialize database connection and schema
-        database_pg.init_connection_pool()
-        database_pg.init_db_schema()
+        if not database_pg.init_connection_pool():
+            st.error("Failed to initialize database connection pool")
+            return False
         
-        # Page configuration
-        st.set_page_config(
-            page_title="Pump Detector Pro Indodax", 
-            layout="wide",
-            page_icon="🚨"
-        )
-        
+        if not database_pg.init_db_schema():
+            st.error("Failed to initialize database schema")
+            return False
+            
         return True
     except Exception as e:
-        st.error(f"❌ Failed to initialize application: {str(e)}")
+        st.error(f"❌ Database initialization failed: {str(e)}")
         return False
 
-# --- Main App Function ---
-def run_pump_detector():
+# --- Main App ---
+def main():
+    st.set_page_config(
+        page_title="Pump Detector Pro Indodax", 
+        layout="wide",
+        page_icon="🚨"
+    )
+    
     st.title("🚨 Tools Trading Profesional NBF SOFT")
+    
+    # Initialize database
+    if not initialize_database():
+        st.error("Application cannot start due to database initialization failure")
+        st.stop()
     
     # Sidebar controls
     with st.sidebar:
@@ -37,7 +55,7 @@ def run_pump_detector():
             index=0
         )
         
-        # Default parameters based on preset
+        # Parameter presets
         if preset == "Aggressive":
             interval = 3
             price_threshold = 1.0
@@ -57,27 +75,11 @@ def run_pump_detector():
             price_delta = 1.0
             spike_factor = 2.0
         else:  # Custom
-            interval = st.selectbox(
-                "⏱️ Interval Refresh (detik)", 
-                [3, 5, 10], 
-                index=0
-            )
-            price_threshold = st.slider(
-                "📈 Threshold Harga (%)", 
-                0.5, 5.0, 1.5, 0.1
-            )
-            volume_threshold = st.slider(
-                "📊 Threshold Volume (%)", 
-                10.0, 500.0, 50.0, 5.0
-            )
-            price_delta = st.slider(
-                "📈 Price Delta (%)", 
-                0.5, 5.0, 1.0, 0.1
-            )
-            spike_factor = st.slider(
-                "📊 Spike Factor Volume (x)", 
-                1.0, 5.0, 1.5, 0.1
-            )
+            interval = st.selectbox("⏱️ Interval Refresh (detik)", [3, 5, 10], index=0)
+            price_threshold = st.slider("📈 Threshold Harga (%)", 0.5, 5.0, 1.5, 0.1)
+            volume_threshold = st.slider("📊 Threshold Volume (%)", 10.0, 500.0, 50.0, 5.0)
+            price_delta = st.slider("📈 Price Delta (%)", 0.5, 5.0, 1.0, 0.1)
+            spike_factor = st.slider("📊 Spike Factor Volume (x)", 1.0, 5.0, 1.5, 0.1)
     
     # Auto refresh
     st_autorefresh(interval=interval * 1000, key="data_refresh")
@@ -111,14 +113,10 @@ def run_pump_detector():
                 )
 
                 if is_pump:
-                    # Send Telegram notification
                     detector.send_telegram_message(
                         f"🚨 PUMP DETECTED {result['ticker'].upper()}\n"
                         f"Harga: {result['harga_sebelum']} ➡️ {result['harga_sekarang']} (+{result['kenaikan_harga']:.2f}%)\n"
                         f"Volume: +{result['kenaikan_volume']:.2f}%\n"
-                        f"MA Harga: {result['ma_harga']}\n"
-                        f"MA Volume: {result['ma_volume']}\n"
-                        f"Consecutive Up: {result['consecutive_up']}x\n"
                         f"Jam: {result['timestamp']}"
                     )
                     detected_pumps.append(result)
@@ -126,32 +124,18 @@ def run_pump_detector():
         # Display results
         if detected_pumps:
             st.subheader("📈 Pump Terdeteksi Saat Ini")
-            df = pd.DataFrame(detected_pumps)
             st.dataframe(
-                df.sort_values('kenaikan_harga', ascending=False),
+                pd.DataFrame(detected_pumps),
                 use_container_width=True,
                 hide_index=True
             )
-            
-            # Add download button
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download Data Pump",
-                data=csv,
-                file_name=f"pump_detections_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime='text/csv'
-            )
         else:
-            st.info("🔍 Tidak ada pump yang terdeteksi dengan parameter saat ini")
+            st.info("🔍 Tidak ada pump yang terdeteksi")
             
     except Exception as e:
         st.error(f"❌ Error saat memproses data: {str(e)}")
     
-    # Last update time
     st.write(f"🕒 Update terakhir: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} WIB")
 
-# --- Run the app ---
-if initialize_app():
-    run_pump_detector()
-else:
-    st.error("Aplikasi tidak dapat dijalankan karena masalah inisialisasi. Silakan coba lagi nanti.")
+if __name__ == "__main__":
+    main()
