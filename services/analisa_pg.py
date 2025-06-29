@@ -103,3 +103,16 @@ def calculate_indicators(df):
     except Exception as e:
         st.error(f"❌ Error calculate_indicators: {e}")
         return df
+
+def get_support_resistance_levels(data):
+    """Cari level support & resistance sederhana dari data harga"""
+    try:
+        data = pd.Series(data)
+        unique_prices = data.round(-2).value_counts().sort_values(ascending=False)
+        support = unique_prices.index.min()
+        resistance = unique_prices.index.max()
+        return support, resistance
+    except Exception as e:
+        st.error(f"❌ Error get_support_resistance_levels: {e}")
+        return None, None
+
