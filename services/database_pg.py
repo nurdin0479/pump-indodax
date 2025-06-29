@@ -249,3 +249,22 @@ if 'DB_INITIALIZED' not in st.session_state:
     except Exception as e:
         st.error(f"❌ DB init error: {e}")
         close_all_connections()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_price_history_since(ticker, since_date):
+    """Ambil histori harga sejak tanggal tertentu"""
+    try:
+        results = execute_query(
+            """
+            SELECT last FROM ticker_history
+            WHERE ticker = %s AND timestamp >= %s
+            ORDER BY timestamp DESC
+            """,
+            (ticker, since_date),
+            fetch=True
+        )
+        return results or []
+    except Exception as e:
+        st.error(f"❌ Error get_price_history_since: {e}")
+        return []
