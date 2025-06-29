@@ -27,6 +27,7 @@ def get_last_30_daily_closes(ticker):
         st.error(f"❌ Error get_last_30_daily_closes: {e}")
         return []
 
+
 # --- Ambil n closes terakhir ---
 def get_last_n_closes(ticker, n):
     try:

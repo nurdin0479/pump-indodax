@@ -295,3 +295,22 @@ def get_last_30_daily_closes(ticker):
     except Exception as e:
         st.error(f"❌ Error get_last_30_daily_closes: {e}")
         return []
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_last_n_closes(ticker, limit=30):
+    """Ambil n harga close terakhir berdasarkan timestamp DESC"""
+    try:
+        results = execute_query(
+            """
+            SELECT last FROM ticker_history
+            WHERE ticker = %s
+            ORDER BY timestamp DESC
+            LIMIT %s
+            """,
+            (ticker, limit),
+            fetch=True
+        )
+        return [r[0] for r in results] if results else []
+    except Exception as e:
+        st.error(f"❌ Error get_last_n_closes: {e}")
+        return []
