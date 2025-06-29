@@ -9,15 +9,15 @@ wib = pytz.timezone('Asia/Jakarta')
 
 @st.cache_data(ttl=5)
 def fetch_indodax_data():
-    """Ambil data ticker Indodax, di-cache selama 5 detik."""
+    """Ambil data ticker Indodax, di-cache 5 detik."""
     url = "https://indodax.com/api/tickers"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-
         data = response.json()
+
         if 'tickers' not in data:
-            st.error("❌ Response API Indodax tidak berisi key 'tickers'.")
+            st.error("❌ Response API Indodax tidak berisi 'tickers'.")
             return []
 
         result = []
@@ -34,14 +34,13 @@ def fetch_indodax_data():
         return result
 
     except requests.RequestException as e:
-        st.error(f"❌ Gagal fetch data dari Indodax API: {e}")
+        st.error(f"❌ Gagal fetch data Indodax API: {e}")
         return []
     except ValueError:
-        st.error("❌ Error parsing JSON dari API.")
+        st.error("❌ Error parsing JSON.")
         return []
 
 def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_consecutive_up=3, price_delta=1.0, spike_factor=1.5):
-    """Deteksi pump profesional berbasis MA harga & volume + tren harga"""
     rows = database_pg.get_recent_price_volume(ticker, limit=window)
     if len(rows) < window:
         return False, None
@@ -51,7 +50,6 @@ def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_conse
 
     price_ma = sum(prices) / len(prices)
     volume_ma = sum(volumes) / len(volumes)
-
     consecutive_up = sum(1 for i in range(1, len(prices)) if prices[i] > prices[i-1])
 
     price_change = ((prices[-1] - prices[0]) / prices[0]) * 100 if prices[0] else 0
@@ -71,11 +69,10 @@ def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_conse
         "timestamp": timestamp
     }
 
-    # Simpan log event ke price_event_log
+    # Log event harga/volume
     if consecutive_up >= 2 and (price_change >= 1.0 or volume_change >= 5.0):
         database_pg.save_price_event_log(data)
 
-    # Validasi pump profesional
     if (
         consecutive_up >= min_consecutive_up and
         price_change >= price_threshold and
@@ -87,7 +84,6 @@ def is_valid_pump(ticker, price_threshold, volume_threshold, window=5, min_conse
         return True, data
 
     return False, None
-
 
 def send_telegram_message(message):
     try:
