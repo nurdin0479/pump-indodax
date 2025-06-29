@@ -42,7 +42,7 @@ def main():
         page_icon="🚨"
     )
     
-    st.title("🚨 Tools Trading Profesional NBF SOFT")
+    st.title("🚨 Smart Trader NBF SOFT")
     
     if not initialize_database():
         st.error("Application cannot start due to database initialization failure")
