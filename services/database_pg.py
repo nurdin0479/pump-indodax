@@ -1,25 +1,28 @@
 import psycopg2
-from psycopg2 import pool, OperationalError, InterfaceError, PoolError
+from psycopg2 import OperationalError, InterfaceError
+from psycopg2.pool import SimpleConnectionPool, PoolError
 from urllib.parse import urlparse
 import streamlit as st
 import time
 from contextlib import contextmanager
 
-# --- Connection Pool Configuration ---
+# === Global Config ===
 DB_POOL = None
-MAX_CONN = 10
+MAX_CONN = 5
 CONN_TIMEOUT = 5
 RETRY_DELAY = 1
 
-# --- Initialize connection pool ---
+
+# === Connection Pool Management ===
 def init_connection_pool():
     global DB_POOL
-    if DB_POOL:
+    if DB_POOL is not None:
         return
+
     try:
         db_url = st.secrets["DATABASE_URL"]
         result = urlparse(db_url)
-        DB_POOL = psycopg2.pool.SimpleConnectionPool(
+        DB_POOL = SimpleConnectionPool(
             minconn=1,
             maxconn=MAX_CONN,
             dbname=result.path[1:],
@@ -28,170 +31,238 @@ def init_connection_pool():
             host=result.hostname,
             port=result.port,
             sslmode="require",
-            connect_timeout=CONN_TIMEOUT
+            connect_timeout=CONN_TIMEOUT,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5
         )
-        print("✅ DB Pool initialized")
+        print("✅ Database pool initialized")
     except Exception as e:
-        st.error(f"❌ Failed initialize connection pool: {e}")
+        st.error(f"❌ Failed to initialize DB pool: {e}")
         DB_POOL = None
 
-def get_connection():
+
+def close_all_connections():
+    global DB_POOL
+    if DB_POOL:
+        try:
+            DB_POOL.closeall()
+            print("✅ All DB connections closed")
+        except Exception as e:
+            print(f"⚠️ Error closing connections: {e}")
+        finally:
+            DB_POOL = None
+
+
+def check_db_health():
+    try:
+        result = execute_query("SELECT 1", fetchone=True)
+        return result[0] == 1 if result else False
+    except Exception:
+        return False
+
+
+# === Connection Utilities ===
+def get_conn():
     global DB_POOL
     if DB_POOL is None:
         init_connection_pool()
     try:
         return DB_POOL.getconn()
-    except PoolError as e:
-        st.error("❌ Koneksi database penuh, coba lagi nanti.")
+    except PoolError:
+        raise PoolError("❌ Connection pool exhausted. Increase MAX_CONN or check active queries.")
+    except Exception as e:
+        st.error(f"❌ DB connection error: {e}")
         raise
 
-def release_connection(conn):
+
+def release_conn(conn):
+    global DB_POOL
     if conn:
         try:
             if DB_POOL and not conn.closed:
                 DB_POOL.putconn(conn)
-        except:
+            elif not conn.closed:
+                conn.close()
+        except Exception:
             if not conn.closed:
                 conn.close()
 
-def close_all_connections():
-    global DB_POOL
-    if DB_POOL:
-        DB_POOL.closeall()
-        DB_POOL = None
-        print("✅ Semua koneksi pool ditutup")
 
-# --- Connection context manager ---
 @contextmanager
 def get_conn_cursor():
     conn = None
     cursor = None
     try:
-        conn = get_connection()
+        conn = get_conn()
         cursor = conn.cursor()
         yield conn, cursor
         conn.commit()
     except (OperationalError, InterfaceError, PoolError) as e:
         if conn:
             conn.rollback()
-        st.error(f"❌ DB Error: {e}")
-        raise
+        raise e
     finally:
         if cursor:
             cursor.close()
         if conn:
-            release_connection(conn)
+            release_conn(conn)
 
-# --- Execute Query General ---
-def execute_query(query, params=None, fetch=False, fetchone=False):
+
+# === Query Executor ===
+def execute_query(query, params=None, fetch=False, fetchone=False, return_rowcount=False):
     with get_conn_cursor() as (conn, cursor):
         cursor.execute(query, params)
         if fetchone:
             return cursor.fetchone()
-        if fetch:
+        elif fetch:
             return cursor.fetchall()
+        elif return_rowcount:
+            return cursor.rowcount
+        return None
 
-# --- Custom Queries ---
-def get_all_tickers():
-    try:
-        results = execute_query(
-            "SELECT DISTINCT ticker FROM ticker_history ORDER BY ticker",
-            fetch=True
-        )
-        return [r[0] for r in results] if results else []
-    except Exception as e:
-        st.error(f"❌ Error get_all_tickers: {e}")
-        return []
 
-def get_price_history_since(ticker, since_date):
-    try:
-        results = execute_query(
-            "SELECT last FROM ticker_history WHERE ticker=%s AND timestamp >= %s ORDER BY timestamp DESC",
-            (ticker, since_date),
-            fetch=True
+# === Schema Init ===
+def init_db_schema():
+    queries = [
+        """
+        CREATE TABLE IF NOT EXISTS ticker_history (
+            id SERIAL PRIMARY KEY,
+            ticker TEXT NOT NULL,
+            last NUMERIC(18,8) NOT NULL,
+            vol_idr NUMERIC(18,2) NOT NULL,
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT unique_ticker_timestamp UNIQUE (ticker, timestamp)
         )
-        return results or []
-    except Exception as e:
-        st.error(f"❌ Error get_price_history_since: {e}")
-        return []
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS pump_history (
+            id SERIAL PRIMARY KEY,
+            ticker TEXT NOT NULL,
+            harga_sebelum NUMERIC(18,8),
+            harga_sekarang NUMERIC(18,8),
+            kenaikan_harga NUMERIC(18,2),
+            kenaikan_volume NUMERIC(18,2),
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS price_event_log (
+            id SERIAL PRIMARY KEY,
+            ticker TEXT NOT NULL,
+            harga_sebelum NUMERIC(18,8),
+            harga_sekarang NUMERIC(18,8),
+            kenaikan_harga NUMERIC(18,2),
+            kenaikan_volume NUMERIC(18,2),
+            ma_harga NUMERIC(18,8),
+            ma_volume NUMERIC(18,2),
+            consecutive_up INTEGER,
+            timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    ]
+    for q in queries:
+        execute_query(q)
 
-def get_last_30_daily_closes(ticker):
-    try:
-        results = execute_query(
-            """
-            SELECT last FROM (
-                SELECT DISTINCT ON (DATE(timestamp)) DATE(timestamp) as tgl, last
-                FROM ticker_history
-                WHERE ticker = %s
-                ORDER BY DATE(timestamp) DESC, timestamp DESC
-            ) AS daily_prices
-            ORDER BY tgl DESC
-            LIMIT 30
-            """,
-            (ticker,),
-            fetch=True
-        )
-        return [r[0] for r in results] if results else []
-    except Exception as e:
-        st.error(f"❌ Error get_last_30_daily_closes: {e}")
-        return []
 
-def save_price_event_log(data):
-    try:
-        execute_query(
-            """
-            INSERT INTO price_event_log (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, ma_harga, ma_volume, consecutive_up, timestamp)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """,
-            (
-                data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
-                data['kenaikan_harga'], data['kenaikan_volume'],
-                data['ma_harga'], data['ma_volume'], data['consecutive_up'],
-                data['timestamp']
-            )
-        )
-    except Exception as e:
-        st.error(f"❌ Error save_price_event_log: {e}")
+# === CRUD Method ===
+def save_ticker_history(ticker, last, vol_idr):
+    execute_query("""
+        INSERT INTO ticker_history (ticker, last, vol_idr)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (ticker, timestamp) DO NOTHING
+    """, (ticker, last, vol_idr))
+
+
+def get_recent_price_volume(ticker, limit=5):
+    return execute_query("""
+        SELECT last, vol_idr FROM ticker_history
+        WHERE ticker = %s
+        ORDER BY timestamp DESC
+        LIMIT %s
+    """, (ticker, limit), fetch=True)
+
 
 def save_pump_log(data):
-    try:
-        execute_query(
-            """
-            INSERT INTO pump_history (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (
-                data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
-                data['kenaikan_harga'], data['kenaikan_volume'], data['timestamp']
-            )
-        )
-    except Exception as e:
-        st.error(f"❌ Error save_pump_log: {e}")
+    execute_query("""
+        INSERT INTO pump_history (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (
+        data['ticker'], data['harga_sebelum'], data['harga_sekarang'],
+        data['kenaikan_harga'], data['kenaikan_volume']
+    ))
 
-# --- Pool Status ---
-def get_pool_status():
-    if DB_POOL:
-        return {
-            'minconn': DB_POOL.minconn,
-            'maxconn': DB_POOL.maxconn,
-            'in_use': len(DB_POOL._used),
-            'available': len(DB_POOL._rused)
-        }
-    return None
 
-# --- DB Health Check ---
-def check_db_health():
-    try:
-        result = execute_query("SELECT 1", fetchone=True)
-        return result[0] == 1
-    except:
-        return False
+def save_price_event_log(data):
+    execute_query("""
+        INSERT INTO price_event_log (ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume,
+        ma_harga, ma_volume, consecutive_up, timestamp)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """, (
+        data['ticker'], data['harga_sebelum'], data['harga_sekarang'], data['kenaikan_harga'],
+        data['kenaikan_volume'], data['ma_harga'], data['ma_volume'], data['consecutive_up'], data['timestamp']
+    ))
 
-# --- Auto init if not yet ---
+
+def get_all_tickers():
+    results = execute_query("SELECT DISTINCT ticker FROM ticker_history ORDER BY ticker", fetch=True)
+    return [r[0] for r in results] if results else []
+
+
+def get_price_history_since(ticker, since_date):
+    results = execute_query("""
+        SELECT last FROM ticker_history
+        WHERE ticker = %s AND timestamp >= %s
+        ORDER BY timestamp DESC
+    """, (ticker, since_date), fetch=True)
+    return results
+
+
+def get_pump_history(limit=50):
+    return execute_query("""
+        SELECT ticker, harga_sebelum, harga_sekarang, kenaikan_harga, kenaikan_volume, timestamp
+        FROM pump_history
+        ORDER BY timestamp DESC
+        LIMIT %s
+    """, (limit,), fetch=True)
+
+
+def get_last_30_daily_closes(ticker):
+    results = execute_query("""
+        SELECT last FROM (
+            SELECT DISTINCT ON (DATE(timestamp)) DATE(timestamp), last
+            FROM ticker_history
+            WHERE ticker = %s
+            ORDER BY DATE(timestamp) DESC, timestamp DESC
+        ) AS daily_prices
+        ORDER BY DATE DESC
+        LIMIT 30
+    """, (ticker,), fetch=True)
+    return [r[0] for r in results] if results else []
+
+
+def get_last_n_closes(ticker, n):
+    results = execute_query("""
+        SELECT last FROM ticker_history
+        WHERE ticker = %s
+        ORDER BY timestamp DESC
+        LIMIT %s
+    """, (ticker, n), fetch=True)
+    return [r[0] for r in results][::-1] if results else []
+
+
+def get_full_price_data(ticker):
+    results = execute_query("""
+        SELECT timestamp, last FROM ticker_history
+        WHERE ticker = %s
+        ORDER BY timestamp ASC
+    """, (ticker,), fetch=True)
+    return results or []
+
+
+# === Auto Init Pool & Schema on Import ===
 if 'DB_INITIALIZED' not in st.session_state:
-    try:
-        init_connection_pool()
-        st.session_state.DB_INITIALIZED = True
-    except Exception as e:
-        st.error(f"❌ Database initialization failed: {e}")
-        close_all_connections()
+    init_connection_pool()
+    init_db_schema()
+    st.session_state.DB_INITIALIZED = True
