@@ -268,3 +268,28 @@ def get_price_history_since(ticker, since_date):
     except Exception as e:
         st.error(f"❌ Error get_price_history_since: {e}")
         return []
+    
+@st.cache_data(ttl=300, show_spinner=False)
+def get_last_30_daily_closes(ticker):
+    """Ambil 30 harga penutupan harian terakhir"""
+    try:
+        results = execute_query(
+            """
+            SELECT last FROM (
+                SELECT DISTINCT ON (DATE(timestamp)) 
+                    DATE(timestamp) as tgl, 
+                    last
+                FROM ticker_history
+                WHERE ticker = %s
+                ORDER BY DATE(timestamp) DESC, timestamp DESC
+            ) AS daily_prices
+            ORDER BY tgl DESC
+            LIMIT 30
+            """,
+            (ticker,),
+            fetch=True
+        )
+        return [r[0] for r in results] if results else []
+    except Exception as e:
+        st.error(f"❌ Error get_last_30_daily_closes: {e}")
+        return []
